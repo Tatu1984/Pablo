@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
 import { hashPassword, verifyPassword } from "@/backend/utils/hash.util";
+import { newId } from "@/backend/utils/id.util";
 import { signSession, type SessionPayload } from "@/backend/utils/jwt.util";
 import {
   findUserByEmail,
@@ -9,15 +9,6 @@ import {
 import { insertOrg, insertOrgMember, findOrgForUser } from "@/backend/repositories/org.repository";
 import type { RegisterInput, LoginInput } from "@/backend/validators/auth.validator";
 import type { Org, User } from "@/shared/types/user.types";
-
-// Lowercase base32-ish id (Crockford minus ambiguous chars) with a prefix.
-function id(prefix: string): string {
-  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-  const bytes = randomBytes(16);
-  let out = "";
-  for (const b of bytes) out += alphabet[b % alphabet.length];
-  return `${prefix}_${out}`;
-}
 
 export class AuthError extends Error {
   constructor(
@@ -37,8 +28,8 @@ export async function register(input: RegisterInput): Promise<{
   if (existing) throw new AuthError("email_taken", "That email is already registered.");
 
   const passwordHash = await hashPassword(input.password);
-  const userId = id("user");
-  const orgId = id("org");
+  const userId = newId("user");
+  const orgId = newId("org");
 
   const user = await insertUser(userId, input.email, passwordHash);
   const org = await insertOrg(orgId, input.org);

@@ -1,15 +1,75 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
 import PageFrame from "@/frontend/components/layout/PageFrame";
 import PageHeader from "@/frontend/components/layout/PageHeader";
 import { PROVIDER_TYPES } from "@/shared/constants/providers";
 import type { ProviderType } from "@/shared/types/provider.types";
 
+interface ProblemJson {
+  code?: string;
+  detail?: string;
+  errors?: Record<string, string[]>;
+}
+
 export default function NewProviderPage() {
+  const router = useRouter();
   const [type, setType] = useState<ProviderType>("openrouter");
   const current = PROVIDER_TYPES.find((p) => p.type === type)!;
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setFieldErrors({});
+
+    const form = new FormData(e.currentTarget);
+    const modelsText = String(form.get("models") ?? "");
+    const models = modelsText
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const payload = {
+      type,
+      name: String(form.get("name") ?? ""),
+      base_url: String(form.get("base_url") ?? "") || undefined,
+      api_key: String(form.get("api_key") ?? "") || undefined,
+      models,
+      region: String(form.get("region") ?? "") || undefined,
+      role_arn: String(form.get("role_arn") ?? "") || undefined,
+    };
+
+    try {
+      const res = await fetch("/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        router.push("/providers");
+        router.refresh();
+        return;
+      }
+      const problem: ProblemJson = await res.json().catch(() => ({}));
+      if (problem.errors) {
+        const flat: Record<string, string> = {};
+        for (const [k, v] of Object.entries(problem.errors)) flat[k] = v[0] ?? "";
+        setFieldErrors(flat);
+      }
+      setError(problem.detail ?? "Could not add provider.");
+    } catch {
+      setError("Network error. Check your connection and retry.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <PageFrame>
@@ -19,7 +79,7 @@ export default function NewProviderPage() {
         description="Pick a provider type, paste credentials, and we'll discover available models. You can enable more than one per provider."
       />
 
-      <form className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <form onSubmit={onSubmit} className="grid grid-cols-1 gap-6 md:grid-cols-3" noValidate>
         <section className="md:col-span-2 flex flex-col gap-5 rounded-lg border border-ink-800 bg-ink-950 p-5">
           <div>
             <h2 className="text-sm font-semibold text-ink-100">Provider</h2>
@@ -60,21 +120,28 @@ export default function NewProviderPage() {
               <label className="flex flex-col gap-1 text-sm">
                 <span className="text-ink-300">Display name</span>
                 <input
+                  name="name"
                   placeholder={`${current.label} — production`}
+                  required
                   className="rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-accent-600"
                 />
+                {fieldErrors.name && (
+                  <span className="text-[11px] text-red-400">{fieldErrors.name}</span>
+                )}
               </label>
 
               {(type === "openai_compatible" || type === "ollama") && (
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="text-ink-300">Base URL</span>
                   <input
-                    placeholder={
-                      current.default_base_url ?? "https://api.example.com/v1"
-                    }
+                    name="base_url"
+                    placeholder={current.default_base_url ?? "https://api.example.com/v1"}
                     defaultValue={current.default_base_url}
                     className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
                   />
+                  {fieldErrors.base_url && (
+                    <span className="text-[11px] text-red-400">{fieldErrors.base_url}</span>
+                  )}
                   <span className="text-[11px] text-ink-500">
                     OpenAI-style <span className="mono">/chat/completions</span> endpoint.
                   </span>
@@ -85,12 +152,17 @@ export default function NewProviderPage() {
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="text-ink-300">{current.key_label ?? "API key"}</span>
                   <input
+                    name="api_key"
                     type="password"
                     placeholder="sk-…"
                     className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
                   />
+                  {fieldErrors.api_key && (
+                    <span className="text-[11px] text-red-400">{fieldErrors.api_key}</span>
+                  )}
                   <span className="text-[11px] text-ink-500">
-                    Stored encrypted. Decrypted only inside the execution sandbox at run time.
+                    Stored encrypted (AES-256-GCM). Decrypted only inside the execution sandbox
+                    at run time.
                   </span>
                 </label>
               )}
@@ -100,6 +172,7 @@ export default function NewProviderPage() {
                   <label className="flex flex-col gap-1 text-sm">
                     <span className="text-ink-300">Region</span>
                     <input
+                      name="region"
                       placeholder="us-east-1"
                       className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
                     />
@@ -107,53 +180,37 @@ export default function NewProviderPage() {
                   <label className="flex flex-col gap-1 text-sm">
                     <span className="text-ink-300">Role ARN (cross-account)</span>
                     <input
+                      name="role_arn"
                       placeholder="arn:aws:iam::123456789012:role/PabloBedrock"
                       className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
                     />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-                    <span className="text-ink-300">Access key ID (optional)</span>
-                    <input
-                      placeholder="AKIA…"
-                      className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
-                    />
-                    <span className="text-[11px] text-ink-500">
-                      Leave blank to use the cross-account role's trust policy.
-                    </span>
-                  </label>
                 </div>
               )}
-
-              {current.extra_fields
-                ?.filter((f) => {
-                  // Base URL already rendered above for openai_compatible/ollama
-                  if (type === "openai_compatible" && f.name === "base_url") return false;
-                  return true;
-                })
-                .map((f) => (
-                  <label key={f.name} className="flex flex-col gap-1 text-sm">
-                    <span className="text-ink-300">{f.label}</span>
-                    <input
-                      placeholder={f.placeholder}
-                      className="mono rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
-                    />
-                  </label>
-                ))}
             </div>
           </div>
 
           <div className="border-t border-ink-800 pt-5">
             <h2 className="text-sm font-semibold text-ink-100">Models</h2>
             <p className="mt-1 text-xs text-ink-500">
-              After you save we probe the endpoint for its model list. You can also paste a
-              comma-separated allowlist here.
+              Paste a comma- or newline-separated list of model IDs to enable for this connection.
             </p>
             <textarea
+              name="models"
               rows={3}
               placeholder="gpt-4o, gpt-4o-mini, o3-mini"
               className="mono mt-3 w-full rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-accent-600"
             />
           </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+            >
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 border-t border-ink-800 pt-5">
             <Link
@@ -163,16 +220,11 @@ export default function NewProviderPage() {
               Cancel
             </Link>
             <button
-              type="button"
-              className="rounded-md border border-ink-800 bg-ink-900 px-3 py-1.5 text-sm text-ink-200 hover:bg-ink-800"
-            >
-              Test connection
-            </button>
-            <button
               type="submit"
-              className="rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
+              disabled={loading}
+              className="rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-60"
             >
-              Add provider
+              {loading ? "Adding…" : "Add provider"}
             </button>
           </div>
         </section>

@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 declare global {
   var __pgPool: Pool | undefined;
@@ -24,4 +24,20 @@ export async function query<T = Record<string, unknown>>(
 ): Promise<T[]> {
   const r = await pool.query(text, params);
   return r.rows as T[];
+}
+
+// Run `fn` on a single pooled client inside BEGIN/COMMIT.
+export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

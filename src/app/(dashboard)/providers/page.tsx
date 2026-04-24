@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageFrame from "@/frontend/components/layout/PageFrame";
 import PageHeader from "@/frontend/components/layout/PageHeader";
 import ProviderBadge from "@/frontend/components/ui/ProviderBadge";
+import ProviderRowActions from "@/frontend/components/features/providers/ProviderRowActions";
 import { fmtDate } from "@/frontend/utils/formatters";
 import { getProviders } from "@/backend/repositories/provider.repository";
 import { requireSession } from "@/backend/services/session.service";
@@ -86,12 +87,7 @@ export default async function ProvidersPage() {
                 </td>
                 <td className="px-4 py-3 text-xs text-ink-400">{fmtDate(p.last_used_at)}</td>
                 <td className="px-4 py-3 text-right text-xs">
-                  <Link href={`/providers/${p.id}`} className="mr-3 text-ink-300 hover:text-ink-100">
-                    Edit
-                  </Link>
-                  {p.byo && (
-                    <button className="text-red-500 hover:text-red-400">Remove</button>
-                  )}
+                  <ProviderRowActions providerId={p.id} deletable={p.byo} />
                 </td>
               </tr>
             ))}
