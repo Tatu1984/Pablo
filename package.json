@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:init": "node --env-file=.env.local scripts/init-db.mjs",
+    "db:init": "node --env-file=.env.local src/backend/database/seed.mjs",
     "clean": "rm -rf .next"
   },
   "dependencies": {
