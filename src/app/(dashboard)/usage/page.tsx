@@ -1,6 +1,7 @@
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import { getAgents } from "@/lib/queries";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import { getAgents } from "@/backend/repositories/agent.repository";
+import { requireSession } from "@/backend/services/session.service";
 
 const FAKE_VOLUMES = [
   { runs: 128, tokens: 312_400, cost_cents: 0 },
@@ -15,7 +16,8 @@ const DAYS = Array.from({ length: 14 }, (_, i) => ({
 const maxRuns = Math.max(...DAYS.map((d) => d.runs));
 
 export default async function UsagePage() {
-  const agents = await getAgents();
+  const { org } = await requireSession();
+  const agents = await getAgents(org.id);
   const USAGE_BY_AGENT = agents.map((a, i) => ({
     agent_id: a.id,
     agent_name: a.name,

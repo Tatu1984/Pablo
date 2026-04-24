@@ -1,5 +1,5 @@
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
 
 const INVOICES = [
   { id: "in_0421", period: "2026-04", amount_cents: 0, status: "paid", hosted_url: "#" },

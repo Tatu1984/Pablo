@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ThemeScript from "@/components/ThemeScript";
+import ThemeScript from "@/frontend/components/layout/ThemeScript";
 import "./globals.css";
 
 export const metadata: Metadata = {

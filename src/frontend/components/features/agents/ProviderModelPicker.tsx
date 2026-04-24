@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Provider } from "@/lib/types";
+import type { Provider } from "@/shared/types";
 
 export default function ProviderModelPicker({
   providers,

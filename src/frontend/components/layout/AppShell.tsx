@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
-import type { Agent } from "@/lib/types";
+import type { Agent } from "@/shared/types";
 
 export default function AppShell({
   children,
   agents,
+  user,
 }: {
   children: React.ReactNode;
   agents: Agent[];
+  user: { email: string; orgName: string };
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -65,7 +67,7 @@ export default function AppShell({
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <Sidebar agents={agents} onNavigate={() => setOpen(false)} />
+        <Sidebar agents={agents} user={user} onNavigate={() => setOpen(false)} />
       </div>
 
       {open && (

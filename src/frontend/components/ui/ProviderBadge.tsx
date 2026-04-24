@@ -1,4 +1,4 @@
-import type { ProviderType } from "@/lib/mock";
+import type { ProviderType } from "@/shared/types/provider.types";
 
 const LABELS: Record<ProviderType, string> = {
   openrouter: "OpenRouter",

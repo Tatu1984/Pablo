@@ -1,6 +1,6 @@
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import { fmtDate } from "@/lib/mock";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import { fmtDate } from "@/frontend/utils/formatters";
 
 const WEBHOOKS = [
   {

@@ -1,20 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import StatusBadge from "@/components/StatusBadge";
-import { fmtDate } from "@/lib/mock";
-import { getAgent, getRun, getTrace } from "@/lib/queries";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import StatusBadge from "@/frontend/components/ui/StatusBadge";
+import { fmtDate } from "@/frontend/utils/formatters";
+import { getAgent } from "@/backend/repositories/agent.repository";
+import { getRun, getTrace } from "@/backend/repositories/run.repository";
+import { requireSession } from "@/backend/services/session.service";
 
 export default async function RunDetailPage({
   params,
 }: {
   params: { id: string; run_id: string };
 }) {
-  const [agent, run] = await Promise.all([getAgent(params.id), getRun(params.run_id)]);
+  const { org } = await requireSession();
+  const [agent, run] = await Promise.all([
+    getAgent(org.id, params.id),
+    getRun(org.id, params.run_id),
+  ]);
   if (!agent || !run) notFound();
 
-  const steps = await getTrace(run.id);
+  const steps = await getTrace(org.id, run.id);
 
   return (
     <PageFrame>

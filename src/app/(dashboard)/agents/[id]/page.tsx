@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Agent } from "@/lib/types";
-import { getAgent, getProvider, getRunsForAgent } from "@/lib/queries";
+import type { Agent } from "@/shared/types";
+import { getAgent } from "@/backend/repositories/agent.repository";
+import { getProvider } from "@/backend/repositories/provider.repository";
+import { getRunsForAgent } from "@/backend/repositories/run.repository";
+import { requireSession } from "@/backend/services/session.service";
 
 export default async function AgentChatPage({ params }: { params: { id: string } }) {
-  const agent = await getAgent(params.id);
+  const { org } = await requireSession();
+  const agent = await getAgent(org.id, params.id);
   if (!agent) notFound();
 
   const [provider, runs] = await Promise.all([
-    getProvider(agent.provider_id),
-    getRunsForAgent(agent.id),
+    getProvider(org.id, agent.provider_id),
+    getRunsForAgent(org.id, agent.id),
   ]);
   const lastRun = runs[0];
 

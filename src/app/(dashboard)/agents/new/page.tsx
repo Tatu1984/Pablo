@@ -1,12 +1,14 @@
 import Link from "next/link";
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import ProviderModelPicker from "@/components/ProviderModelPicker";
-import { TOOLS } from "@/lib/mock";
-import { getProviders } from "@/lib/queries";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import ProviderModelPicker from "@/frontend/components/features/agents/ProviderModelPicker";
+import { TOOLS } from "@/shared/constants/tools";
+import { getProviders } from "@/backend/repositories/provider.repository";
+import { requireSession } from "@/backend/services/session.service";
 
 export default async function NewAgentPage() {
-  const providers = await getProviders();
+  const { org } = await requireSession();
+  const providers = await getProviders(org.id);
   return (
     <PageFrame>
       <PageHeader

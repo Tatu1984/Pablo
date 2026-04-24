@@ -13,10 +13,11 @@ import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
+import { hash as argonHash } from "@node-rs/argon2";
 
 const { Client } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
+const schemaPath = resolve(__dirname, "sql/schema.sql");
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is not set. Did you pass --env-file=.env.local?");
@@ -32,11 +33,16 @@ async function run() {
 
   try {
     console.log("→ applying schema");
-    const schema = await readFile(resolve(root, "sql/schema.sql"), "utf8");
+    const schema = await readFile(schemaPath, "utf8");
     await client.query(schema);
     console.log("  schema.sql applied");
 
     console.log("→ seeding");
+    SEED.user.password_hash = await argonHash("demo", {
+      memoryCost: 19456,
+      timeCost: 2,
+      parallelism: 1,
+    });
     await seed(client);
     console.log("✓ done");
   } finally {
@@ -57,7 +63,7 @@ async function seed(client) {
   await client.query(
     `INSERT INTO users (id, email, password_hash, created_at)
      VALUES ($1,$2,$3,$4)
-     ON CONFLICT (email) DO NOTHING`,
+     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
     [d.user.id, d.user.email, d.user.password_hash, d.user.created_at],
   );
 

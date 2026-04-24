@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { Agent } from "@/lib/types";
-import ThemeToggle from "./ThemeToggle";
+import type { Agent } from "@/shared/types";
+import ThemeToggle from "@/frontend/components/ui/ThemeToggle";
 
 const SETTINGS_LINKS = [
   { href: "/providers", label: "Providers", hint: "LLM connections & BYO keys" },
@@ -16,13 +16,24 @@ const SETTINGS_LINKS = [
 
 export default function Sidebar({
   agents,
+  user,
   onNavigate,
 }: {
   agents: Agent[];
+  user: { email: string; orgName: string };
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const handle = () => onNavigate?.();
+
+  const signOut = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    await fetch("/api/auth/logout", { method: "POST" });
+    handle();
+    router.push("/login");
+    router.refresh();
+  };
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const footerRef = useRef<HTMLDivElement>(null);
@@ -121,8 +132,8 @@ export default function Sidebar({
       <div className="flex items-center gap-2 border-t border-ink-800 px-4 py-3 text-xs text-ink-400">
         <div className="h-7 w-7 rounded-full bg-ink-800" />
         <div className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-ink-100">demo@pablo.ai</span>
-          <span className="truncate text-[11px] text-ink-500">Acme Inc. · Starter</span>
+          <span className="truncate text-ink-100">{user.email}</span>
+          <span className="truncate text-[11px] text-ink-500">{user.orgName}</span>
         </div>
       </div>
 
@@ -199,14 +210,14 @@ export default function Sidebar({
             <span aria-hidden>⚙</span>
             <span>Settings</span>
           </button>
-          <Link
-            href="/login"
-            onClick={handle}
+          <button
+            type="button"
+            onClick={signOut}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-ink-800 bg-ink-900 px-2 py-1.5 text-sm text-ink-200 transition hover:bg-ink-800"
           >
             <span aria-hidden>⏻</span>
             <span>Sign out</span>
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

@@ -1,7 +1,7 @@
 import { query } from "@/backend/database/client";
 import type { Run, TraceStep } from "@/shared/types/run.types";
 
-export async function getRunsForAgent(agentId: string): Promise<Run[]> {
+export async function getRunsForAgent(orgId: string, agentId: string): Promise<Run[]> {
   return query<Run>(
     `SELECT id, agent_id, status, reason_code,
             tokens_in, tokens_out, cost_cents, step_count, tool_call_count,
@@ -9,13 +9,13 @@ export async function getRunsForAgent(agentId: string): Promise<Run[]> {
             to_char(started_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
             to_char(finished_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS finished_at
        FROM runs
-      WHERE agent_id = $1
+      WHERE org_id = $1 AND agent_id = $2
       ORDER BY queued_at DESC`,
-    [agentId],
+    [orgId, agentId],
   );
 }
 
-export async function getRun(runId: string): Promise<Run | null> {
+export async function getRun(orgId: string, runId: string): Promise<Run | null> {
   const rows = await query<Run>(
     `SELECT id, agent_id, status, reason_code,
             tokens_in, tokens_out, cost_cents, step_count, tool_call_count,
@@ -23,13 +23,13 @@ export async function getRun(runId: string): Promise<Run | null> {
             to_char(started_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
             to_char(finished_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS finished_at
        FROM runs
-      WHERE id = $1`,
-    [runId],
+      WHERE id = $1 AND org_id = $2`,
+    [runId, orgId],
   );
   return rows[0] ?? null;
 }
 
-export async function getTrace(runId: string): Promise<TraceStep[]> {
+export async function getTrace(orgId: string, runId: string): Promise<TraceStep[]> {
   const rows = await query<{
     seq: number;
     ts: string;
@@ -37,13 +37,14 @@ export async function getTrace(runId: string): Promise<TraceStep[]> {
     summary: string;
     payload: unknown | null;
   }>(
-    `SELECT seq,
-            to_char(ts, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ts,
-            type, summary, payload
-       FROM run_events
-      WHERE run_id = $1
-      ORDER BY seq ASC`,
-    [runId],
+    `SELECT e.seq,
+            to_char(e.ts, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ts,
+            e.type, e.summary, e.payload
+       FROM run_events e
+       JOIN runs r ON r.id = e.run_id
+      WHERE e.run_id = $1 AND r.org_id = $2
+      ORDER BY e.seq ASC`,
+    [runId, orgId],
   );
   return rows.map((r) => ({
     seq: r.seq,

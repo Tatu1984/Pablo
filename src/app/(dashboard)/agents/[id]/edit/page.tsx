@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import ProviderModelPicker from "@/components/ProviderModelPicker";
-import { getAgent, getProviders } from "@/lib/queries";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import ProviderModelPicker from "@/frontend/components/features/agents/ProviderModelPicker";
+import { getAgent } from "@/backend/repositories/agent.repository";
+import { getProviders } from "@/backend/repositories/provider.repository";
+import { requireSession } from "@/backend/services/session.service";
 
 const PROMPT_VERSIONS = [
   { id: "prm_v4", version: "v4", created_at: "2026-04-10T08:12:00Z", note: "Tighter JSON coercion" },
@@ -23,7 +25,11 @@ Goal: produce a concise JSON object matching output_schema.
 Use the declared tools only. Do not invent new ones.`;
 
 export default async function EditAgentPage({ params }: { params: { id: string } }) {
-  const [agent, providers] = await Promise.all([getAgent(params.id), getProviders()]);
+  const { org } = await requireSession();
+  const [agent, providers] = await Promise.all([
+    getAgent(org.id, params.id),
+    getProviders(org.id),
+  ]);
   if (!agent) notFound();
 
   return (

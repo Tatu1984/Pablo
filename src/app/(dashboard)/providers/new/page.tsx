@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import PageFrame from "@/components/PageFrame";
-import PageHeader from "@/components/PageHeader";
-import { PROVIDER_TYPES, type ProviderType } from "@/lib/mock";
+import PageFrame from "@/frontend/components/layout/PageFrame";
+import PageHeader from "@/frontend/components/layout/PageHeader";
+import { PROVIDER_TYPES } from "@/shared/constants/providers";
+import type { ProviderType } from "@/shared/types/provider.types";
 
 export default function NewProviderPage() {
   const [type, setType] = useState<ProviderType>("openrouter");

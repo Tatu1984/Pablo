@@ -1,4 +1,5 @@
-import { RunStatus, statusColor } from "@/lib/mock";
+import { statusColor } from "@/frontend/utils/formatters";
+import type { RunStatus } from "@/shared/types/run.types";
 
 export default function StatusBadge({ status }: { status: RunStatus }) {
   return (
