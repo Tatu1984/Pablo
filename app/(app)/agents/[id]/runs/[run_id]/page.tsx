@@ -3,18 +3,18 @@ import { notFound } from "next/navigation";
 import PageFrame from "@/components/PageFrame";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
-import { AGENTS, RUNS, TRACE, fmtDate } from "@/lib/mock";
+import { fmtDate } from "@/lib/mock";
+import { getAgent, getRun, getTrace } from "@/lib/queries";
 
-export default function RunDetailPage({
+export default async function RunDetailPage({
   params,
 }: {
   params: { id: string; run_id: string };
 }) {
-  const agent = AGENTS.find((a) => a.id === params.id);
-  const run = RUNS.find((r) => r.id === params.run_id);
+  const [agent, run] = await Promise.all([getAgent(params.id), getRun(params.run_id)]);
   if (!agent || !run) notFound();
 
-  const steps = TRACE[run.id] ?? [];
+  const steps = await getTrace(run.id);
 
   return (
     <PageFrame>

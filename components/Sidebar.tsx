@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AGENTS } from "@/lib/mock";
+import type { Agent } from "@/lib/types";
 import ThemeToggle from "./ThemeToggle";
 
 const SETTINGS_LINKS = [
@@ -14,7 +14,13 @@ const SETTINGS_LINKS = [
   { href: "/billing", label: "Billing", hint: "Plan & invoices" },
 ];
 
-export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export default function Sidebar({
+  agents,
+  onNavigate,
+}: {
+  agents: Agent[];
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const handle = () => onNavigate?.();
 
@@ -60,7 +66,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex items-center justify-between border-t border-ink-800 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-100">
           <span>Agents</span>
-          <span className="mono text-[11px] font-normal text-ink-500">{AGENTS.length}</span>
+          <span className="mono text-[11px] font-normal text-ink-500">{agents.length}</span>
         </div>
         <Link
           href="/agents/new"
@@ -72,7 +78,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2">
-        {AGENTS.map((a) => {
+        {agents.map((a) => {
           const active =
             pathname === `/agents/${a.id}` || pathname.startsWith(`/agents/${a.id}/`);
           return (
@@ -107,7 +113,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
 
-        {AGENTS.length === 0 && (
+        {agents.length === 0 && (
           <div className="px-2 py-3 text-xs text-ink-500">No agents yet.</div>
         )}
       </nav>

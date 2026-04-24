@@ -1,20 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AGENTS, PROVIDERS, RUNS, type Agent } from "@/lib/mock";
+import type { Agent } from "@/lib/types";
+import { getAgent, getProvider, getRunsForAgent } from "@/lib/queries";
 
-export default function AgentChatPage({ params }: { params: { id: string } }) {
-  const agent = AGENTS.find((a) => a.id === params.id);
+export default async function AgentChatPage({ params }: { params: { id: string } }) {
+  const agent = await getAgent(params.id);
   if (!agent) notFound();
 
-  const lastRun = RUNS.filter((r) => r.agent_id === agent.id).sort((a, b) =>
-    b.queued_at.localeCompare(a.queued_at),
-  )[0];
+  const [provider, runs] = await Promise.all([
+    getProvider(agent.provider_id),
+    getRunsForAgent(agent.id),
+  ]);
+  const lastRun = runs[0];
 
   const ts = "08:22";
 
   return (
     <div className="flex h-full flex-col bg-ink-950">
-      <ChatHeader agent={agent} lastRunId={lastRun?.id} />
+      <ChatHeader agent={agent} providerName={provider?.name ?? null} lastRunId={lastRun?.id} />
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-8">
@@ -64,8 +67,15 @@ export default function AgentChatPage({ params }: { params: { id: string } }) {
   );
 }
 
-function ChatHeader({ agent, lastRunId }: { agent: Agent; lastRunId?: string }) {
-  const provider = PROVIDERS.find((p) => p.id === agent.provider_id);
+function ChatHeader({
+  agent,
+  providerName,
+  lastRunId,
+}: {
+  agent: Agent;
+  providerName: string | null;
+  lastRunId?: string;
+}) {
   return (
     <header className="flex items-center justify-between border-b border-ink-800 bg-ink-950 px-4 py-3 md:px-6">
       <div className="flex min-w-0 items-center gap-3">
@@ -75,7 +85,7 @@ function ChatHeader({ agent, lastRunId }: { agent: Agent; lastRunId?: string }) 
         <div className="min-w-0 leading-tight">
           <div className="truncate text-sm font-semibold text-ink-50">{agent.name}</div>
           <div className="mono truncate text-[11px] text-ink-500">
-            {agent.role} · {provider?.name ?? "provider"} / {agent.model} ·{" "}
+            {agent.role} · {providerName ?? "provider"} / {agent.model} ·{" "}
             {agent.current_prompt_version}
           </div>
         </div>

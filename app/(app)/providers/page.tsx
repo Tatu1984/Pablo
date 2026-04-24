@@ -2,9 +2,11 @@ import Link from "next/link";
 import PageFrame from "@/components/PageFrame";
 import PageHeader from "@/components/PageHeader";
 import ProviderBadge from "@/components/ProviderBadge";
-import { PROVIDERS, fmtDate } from "@/lib/mock";
+import { fmtDate } from "@/lib/mock";
+import { getProviders } from "@/lib/queries";
 
-export default function ProvidersPage() {
+export default async function ProvidersPage() {
+  const providers = await getProviders();
   return (
     <PageFrame>
       <PageHeader
@@ -34,7 +36,7 @@ export default function ProvidersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-800 bg-ink-950">
-            {PROVIDERS.map((p) => (
+            {providers.map((p) => (
               <tr key={p.id} className="align-top hover:bg-ink-900/60">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">

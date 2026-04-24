@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { PROVIDERS, type Provider } from "@/lib/mock";
+import type { Provider } from "@/lib/types";
 
 export default function ProviderModelPicker({
+  providers,
   providerId,
   model,
 }: {
+  providers: Provider[];
   providerId?: string;
   model?: string;
 }) {
-  const active = PROVIDERS.filter((p) => p.status === "active");
+  const active = providers.filter((p) => p.status === "active");
   const initialProvider: Provider | undefined =
     active.find((p) => p.id === providerId) ?? active[0];
   const [selectedProviderId, setSelectedProviderId] = useState<string>(
@@ -42,6 +44,7 @@ export default function ProviderModelPicker({
           }}
           className="rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-accent-600"
         >
+          {active.length === 0 && <option value="">No providers configured</option>}
           {active.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}

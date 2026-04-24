@@ -3,8 +3,10 @@ import PageFrame from "@/components/PageFrame";
 import PageHeader from "@/components/PageHeader";
 import ProviderModelPicker from "@/components/ProviderModelPicker";
 import { TOOLS } from "@/lib/mock";
+import { getProviders } from "@/lib/queries";
 
-export default function NewAgentPage() {
+export default async function NewAgentPage() {
+  const providers = await getProviders();
   return (
     <PageFrame>
       <PageHeader
@@ -44,7 +46,7 @@ export default function NewAgentPage() {
             </select>
           </Field>
 
-          <ProviderModelPicker />
+          <ProviderModelPicker providers={providers} />
 
           <Field label="Input schema (JSON Schema)">
             <textarea

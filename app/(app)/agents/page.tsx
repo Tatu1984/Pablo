@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { AGENTS } from "@/lib/mock";
+import { getAgents } from "@/lib/queries";
 
-export default function AgentsIndex() {
-  if (AGENTS.length > 0) redirect(`/agents/${AGENTS[0].id}`);
+export default async function AgentsIndex() {
+  const agents = await getAgents();
+  if (agents.length > 0) redirect(`/agents/${agents[0].id}`);
   redirect("/agents/new");
 }

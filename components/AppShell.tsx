@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
-import { AGENTS } from "@/lib/mock";
+import type { Agent } from "@/lib/types";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  agents,
+}: {
+  children: React.ReactNode;
+  agents: Agent[];
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -14,7 +20,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setOpen(false);
   }, [pathname]);
 
-  const currentAgent = AGENTS.find((a) => pathname.startsWith(`/agents/${a.id}`));
+  const currentAgent = agents.find((a) => pathname.startsWith(`/agents/${a.id}`));
   const mobileTitle = currentAgent
     ? currentAgent.name
     : pathname === "/agents/new"
@@ -59,7 +65,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <Sidebar onNavigate={() => setOpen(false)} />
+        <Sidebar agents={agents} onNavigate={() => setOpen(false)} />
       </div>
 
       {open && (

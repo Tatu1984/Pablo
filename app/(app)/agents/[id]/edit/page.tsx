@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import PageFrame from "@/components/PageFrame";
 import PageHeader from "@/components/PageHeader";
 import ProviderModelPicker from "@/components/ProviderModelPicker";
-import { AGENTS } from "@/lib/mock";
+import { getAgent, getProviders } from "@/lib/queries";
 
 const PROMPT_VERSIONS = [
   { id: "prm_v4", version: "v4", created_at: "2026-04-10T08:12:00Z", note: "Tighter JSON coercion" },
@@ -22,8 +22,8 @@ const DEFAULT_TASK = `Input: {{ input_json }}
 Goal: produce a concise JSON object matching output_schema.
 Use the declared tools only. Do not invent new ones.`;
 
-export default function EditAgentPage({ params }: { params: { id: string } }) {
-  const agent = AGENTS.find((a) => a.id === params.id);
+export default async function EditAgentPage({ params }: { params: { id: string } }) {
+  const [agent, providers] = await Promise.all([getAgent(params.id), getProviders()]);
   if (!agent) notFound();
 
   return (
@@ -71,7 +71,11 @@ export default function EditAgentPage({ params }: { params: { id: string } }) {
               </select>
             </label>
 
-            <ProviderModelPicker providerId={agent.provider_id} model={agent.model} />
+            <ProviderModelPicker
+              providers={providers}
+              providerId={agent.provider_id}
+              model={agent.model}
+            />
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <Link

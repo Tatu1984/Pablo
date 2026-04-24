@@ -1,11 +1,11 @@
 import PageFrame from "@/components/PageFrame";
 import PageHeader from "@/components/PageHeader";
-import { AGENTS } from "@/lib/mock";
+import { getAgents } from "@/lib/queries";
 
-const USAGE_BY_AGENT = [
-  { agent_id: AGENTS[0].id, agent_name: AGENTS[0].name, runs: 128, tokens: 312_400, cost_cents: 0 },
-  { agent_id: AGENTS[1].id, agent_name: AGENTS[1].name, runs: 942, tokens: 1_812_300, cost_cents: 0 },
-  { agent_id: AGENTS[2].id, agent_name: AGENTS[2].name, runs: 14, tokens: 88_210, cost_cents: 0 },
+const FAKE_VOLUMES = [
+  { runs: 128, tokens: 312_400, cost_cents: 0 },
+  { runs: 942, tokens: 1_812_300, cost_cents: 0 },
+  { runs: 14, tokens: 88_210, cost_cents: 0 },
 ];
 
 const DAYS = Array.from({ length: 14 }, (_, i) => ({
@@ -14,7 +14,13 @@ const DAYS = Array.from({ length: 14 }, (_, i) => ({
 }));
 const maxRuns = Math.max(...DAYS.map((d) => d.runs));
 
-export default function UsagePage() {
+export default async function UsagePage() {
+  const agents = await getAgents();
+  const USAGE_BY_AGENT = agents.map((a, i) => ({
+    agent_id: a.id,
+    agent_name: a.name,
+    ...(FAKE_VOLUMES[i] ?? { runs: 0, tokens: 0, cost_cents: 0 }),
+  }));
   const totalRuns = USAGE_BY_AGENT.reduce((a, b) => a + b.runs, 0);
   const totalTokens = USAGE_BY_AGENT.reduce((a, b) => a + b.tokens, 0);
 
