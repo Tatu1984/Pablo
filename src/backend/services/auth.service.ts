@@ -1,6 +1,7 @@
 import { hashPassword, verifyPassword } from "@/backend/utils/hash.util";
 import { newId } from "@/backend/utils/id.util";
 import { autoProvisionDefaultProvider } from "@/backend/services/provider.service";
+import { autoProvisionStarterAgent } from "@/backend/services/agent.service";
 import { signSession, type SessionPayload } from "@/backend/utils/jwt.util";
 import {
   findUserByEmail,
@@ -36,11 +37,16 @@ export async function register(input: RegisterInput): Promise<{
   const org = await insertOrg(orgId, input.org);
   await insertOrgMember(org.id, user.id, "owner");
 
-  // Best-effort default provider — don't block signup if it fails.
+  // Best-effort defaults — don't block signup if they fail. New orgs get a
+  // managed OpenRouter provider (if OPENROUTER_API_KEY is set) plus a free-
+  // tier sample agent so the first chat works without any setup.
   try {
-    await autoProvisionDefaultProvider(org.id);
+    const provider = await autoProvisionDefaultProvider(org.id);
+    if (provider) {
+      await autoProvisionStarterAgent(org.id, provider.id, provider.models);
+    }
   } catch (err) {
-    console.error("autoProvisionDefaultProvider failed for new org", org.id, err);
+    console.error("auto-provision failed for new org", org.id, err);
   }
 
   const token = await signSession({

@@ -134,6 +134,75 @@ export async function publishPromptVersion(
   return pv;
 }
 
+// Drop a free-tier sample agent into a freshly-provisioned org. Best-effort —
+// callers should not block signup on this. Picks the cheapest model in the
+// provider's enabled list (the `:free` OpenRouter model when present).
+export async function autoProvisionStarterAgent(
+  orgId: string,
+  providerId: string,
+  models: string[],
+): Promise<void> {
+  const free = models.find((m) => m.toLowerCase().includes(":free"));
+  const fallback = models[0];
+  const model = free ?? fallback;
+  if (!model) return;
+
+  const id = newId("agent");
+  const promptId = newId("prm");
+
+  await insertAgent({
+    id,
+    orgId,
+    name: "Hello",
+    role: free ? "Free-tier assistant" : "Sample assistant",
+    description: free
+      ? "Free-tier sample agent powered by OpenRouter's :free model. Rate-limited but costs nothing."
+      : "Sample assistant pre-wired to your default provider.",
+    executionMode: "one_shot",
+    providerId,
+    model,
+    currentPromptVersion: "v1",
+    tools: [],
+    limits: {
+      max_steps: 4,
+      max_runtime_ms: 30_000,
+      max_tool_calls: 0,
+      max_tokens_per_run: 4_000,
+    },
+    intro: [
+      `Hi — I'm a sample agent running on ${model}.`,
+      "Say anything to test the chat round-trip end-to-end.",
+    ],
+    skills: [
+      {
+        label: "Tell me a fact",
+        description: "Pick a topic and I'll surface one interesting fact.",
+        try_first: true,
+      },
+      {
+        label: "Help me write something",
+        description: "Drafts, summaries, or rewrites — paste your text.",
+      },
+      {
+        label: "Explain a concept",
+        description: "Plain-language walkthroughs of jargon-heavy topics.",
+      },
+    ],
+    inputSchema: null,
+    outputSchema: null,
+  });
+
+  await insertPromptVersion(
+    promptId,
+    id,
+    "v1",
+    "You are a friendly, concise assistant. Answer in 1–3 short paragraphs.",
+    "",
+    "",
+    "Created with agent",
+  );
+}
+
 export async function getPromptVersions(orgId: string, agentId: string) {
   const agent = await getAgent(orgId, agentId);
   if (!agent) throw new AgentError("not_found", "Agent not found.");

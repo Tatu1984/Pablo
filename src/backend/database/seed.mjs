@@ -95,26 +95,76 @@ async function seed(client) {
     const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
     const encryptedKey = encryptSecretLikeApp(process.env.OPENROUTER_API_KEY);
     const prefix = process.env.OPENROUTER_API_KEY.slice(0, 8);
+    const providerId = cryptoIdLikeApp("prov");
+    const models = [
+      "openai/gpt-4o-mini",
+      "anthropic/claude-haiku-4.5",
+      "google/gemini-2.0-flash",
+      "meta/llama-3.1-70b-instruct",
+      "minimax/minimax-m2.5:free",
+    ];
     await client.query(
       `INSERT INTO providers
          (id, org_id, name, type, base_url, key_prefix, encrypted_key, models, status, byo)
        VALUES ($1, $2, 'OpenRouter', 'openrouter', $3, $4, $5, $6::jsonb, 'active', true)`,
+      [providerId, d.org.id, baseUrl, prefix, encryptedKey, JSON.stringify(models)],
+    );
+
+    // Free-tier sample agent so demo's first chat works zero-config.
+    const free = models.find((m) => m.includes(":free")) ?? models[0];
+    const agentId = cryptoIdLikeApp("agent");
+    await client.query(
+      `INSERT INTO agents
+         (id, org_id, name, role, description, execution_mode, provider_id, model,
+          current_prompt_version, tools, limits, intro, skills)
+       VALUES ($1, $2, 'Hello', 'Free-tier assistant',
+               'Free-tier sample agent powered by OpenRouter''s :free model. Rate-limited but costs nothing.',
+               'one_shot', $3, $4, 'v1',
+               '[]'::jsonb,
+               $5::jsonb,
+               $6::jsonb,
+               $7::jsonb)`,
       [
-        cryptoIdLikeApp("prov"),
+        agentId,
         d.org.id,
-        baseUrl,
-        prefix,
-        encryptedKey,
+        providerId,
+        free,
+        JSON.stringify({
+          max_steps: 4,
+          max_runtime_ms: 30_000,
+          max_tool_calls: 0,
+          max_tokens_per_run: 4_000,
+        }),
         JSON.stringify([
-          "openai/gpt-4o-mini",
-          "anthropic/claude-haiku-4.5",
-          "google/gemini-2.0-flash",
-          "meta/llama-3.1-70b-instruct",
-          "minimax/minimax-m2.5:free",
+          `Hi — I'm a sample agent running on ${free}.`,
+          "Say anything to test the chat round-trip end-to-end.",
+        ]),
+        JSON.stringify([
+          {
+            label: "Tell me a fact",
+            description: "Pick a topic and I'll surface one interesting fact.",
+            try_first: true,
+          },
+          {
+            label: "Help me write something",
+            description: "Drafts, summaries, or rewrites — paste your text.",
+          },
+          {
+            label: "Explain a concept",
+            description: "Plain-language walkthroughs of jargon-heavy topics.",
+          },
         ]),
       ],
     );
-    console.log(`  seeded org + demo user + OpenRouter provider`);
+    await client.query(
+      `INSERT INTO prompt_versions (id, agent_id, version, system_prompt, task_prompt, note)
+       VALUES ($1, $2, 'v1',
+               'You are a friendly, concise assistant. Answer in 1–3 short paragraphs.',
+               '', 'Created with agent')`,
+      [cryptoIdLikeApp("prm"), agentId],
+    );
+
+    console.log(`  seeded org + demo user + OpenRouter provider + free-tier "Hello" agent`);
   } else {
     console.log(`  seeded org + demo user (no OPENROUTER_API_KEY → empty workspace)`);
   }
