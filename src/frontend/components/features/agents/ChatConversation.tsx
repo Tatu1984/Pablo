@@ -6,6 +6,13 @@ import type { Agent, Skill } from "@/shared/types/agent.types";
 
 type Role = "user" | "assistant";
 
+interface ToolEvent {
+  id: string;
+  name: string;
+  status: "running" | "ok" | "failed";
+  summary?: string;
+}
+
 interface Turn {
   id: string;
   role: Role;
@@ -13,6 +20,7 @@ interface Turn {
   ts: string;
   streaming?: boolean;
   failed?: boolean;
+  toolEvents?: ToolEvent[];
 }
 
 export interface InitialTurn {
@@ -90,6 +98,43 @@ export default function ChatConversation({
             const { content } = JSON.parse(data) as { content: string };
             setTurns((ts) =>
               ts.map((t) => (t.id === asstId ? { ...t, content: t.content + content } : t)),
+            );
+          } else if (event === "tool_call") {
+            const tc = JSON.parse(data) as {
+              tool_call_id: string;
+              name: string;
+            };
+            setTurns((ts) =>
+              ts.map((t) =>
+                t.id === asstId
+                  ? {
+                      ...t,
+                      toolEvents: [
+                        ...(t.toolEvents ?? []),
+                        { id: tc.tool_call_id, name: tc.name, status: "running" },
+                      ],
+                    }
+                  : t,
+              ),
+            );
+          } else if (event === "tool_result") {
+            const tr = JSON.parse(data) as {
+              tool_call_id: string;
+              ok: boolean;
+              summary: string;
+            };
+            setTurns((ts) =>
+              ts.map((t) => {
+                if (t.id !== asstId || !t.toolEvents) return t;
+                return {
+                  ...t,
+                  toolEvents: t.toolEvents.map((te) =>
+                    te.id === tr.tool_call_id
+                      ? { ...te, status: tr.ok ? "ok" : "failed", summary: tr.summary }
+                      : te,
+                  ),
+                };
+              }),
             );
           } else if (event === "failed") {
             const { detail, code } = JSON.parse(data) as { detail: string; code: string };
@@ -248,6 +293,25 @@ function Bubble({ agent, turn }: { agent: Agent; turn: Turn }) {
         </div>
       )}
       <div className={`flex max-w-[80%] flex-col ${isUser ? "items-end" : ""}`}>
+        {!isUser && turn.toolEvents && turn.toolEvents.length > 0 && (
+          <div className="mb-1 flex flex-wrap gap-1.5">
+            {turn.toolEvents.map((te) => (
+              <span
+                key={te.id}
+                className={`mono inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+                  te.status === "running"
+                    ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                    : te.status === "ok"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      : "border-red-500/30 bg-red-500/10 text-red-300"
+                }`}
+                title={te.summary}
+              >
+                {te.status === "running" ? "⏳" : te.status === "ok" ? "✓" : "✗"} {te.name}
+              </span>
+            ))}
+          </div>
+        )}
         <div
           className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
             isUser

@@ -1,4 +1,4 @@
-import { callLlm, streamLlm, GatewayError } from "@/backend/gateway";
+import { streamLlm, GatewayError } from "@/backend/gateway";
 import type { LlmMessage } from "@/backend/gateway";
 import { getAgent, listPromptVersions } from "@/backend/repositories/agent.repository";
 import { getProviderEncrypted, touchProvider } from "@/backend/repositories/provider.repository";
@@ -10,6 +10,8 @@ import {
 } from "@/backend/repositories/run.repository";
 import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
+import { createMultiStepRun } from "@/backend/services/runner.service";
+import type { RunnerEvent } from "@/backend/services/runner.service";
 
 const HISTORY_LIMIT = 20;
 
@@ -25,12 +27,36 @@ export class RunError extends Error {
   }
 }
 
+// Dispatch entry point — picks streaming one-shot when the agent has no
+// tools (preserving Phase 3's token-by-token UX) and the multi-step runner
+// otherwise.
+export async function createRun(opts: OneShotOptions) {
+  const agent = await getAgent(opts.orgId, opts.agentId);
+  if (!agent) throw new RunError("agent_not_found", "Agent not found.");
+
+  if (agent.tools.length === 0) {
+    return createOneShotRun(opts);
+  }
+  return createMultiStepRun({
+    orgId: opts.orgId,
+    agentId: opts.agentId,
+    userMessage: opts.userMessage,
+    onEvent: (ev: RunnerEvent) => {
+      // Bridge runner events back through the SSE-shaped onEvent + onDelta hooks.
+      if (ev.type === "delta") opts.onDelta?.(ev.payload.content);
+      opts.onEvent?.(ev);
+    },
+  });
+}
+
 export interface OneShotOptions {
   orgId: string;
   agentId: string;
   userMessage: string;
   onDelta?: (chunk: string) => void;
-  onEvent?: (ev: { type: "started" | "delta" | "completed" | "failed"; payload: unknown }) => void;
+  // Same shape as RunnerEvent; one-shot path only emits started/completed/failed
+  // but the dispatcher passes the full union through to the SSE writer.
+  onEvent?: (ev: RunnerEvent) => void;
 }
 
 export async function createOneShotRun(opts: OneShotOptions) {
@@ -78,7 +104,7 @@ export async function createOneShotRun(opts: OneShotOptions) {
       provider_id: provider.id,
       message_count: messages.length,
     });
-    opts.onEvent?.({ type: "delta", payload: null }); // signal "thinking"
+    // No "thinking" event — the UI shows a placeholder until first delta.
 
     const apiKey = provider.encrypted_key ? decryptSecret(provider.encrypted_key) : null;
 

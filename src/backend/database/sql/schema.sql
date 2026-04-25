@@ -91,6 +91,16 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS runs_agent_queued_idx ON runs(agent_id, queued_at DESC);
 
+-- Per-agent persistent memory (key/value JSON store), per dev guide §3.6.
+-- Read and written by the memory.read / memory.write tools.
+CREATE TABLE IF NOT EXISTS agent_memory (
+  agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (agent_id, key)
+);
+
 -- Append-only step trace; no updates, no deletes (see §9 invariant).
 CREATE TABLE IF NOT EXISTS run_events (
   run_id  TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,

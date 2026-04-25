@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
-import { createOneShotRun, RunError } from "@/backend/services/run.service";
+import { createRun, RunError } from "@/backend/services/run.service";
+import { RunnerError } from "@/backend/services/runner.service";
 import { requireSession } from "@/backend/services/session.service";
 import { GatewayError } from "@/backend/gateway";
 
@@ -38,19 +39,40 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       };
 
       try {
-        await createOneShotRun({
+        await createRun({
           orgId: session.org.id,
           agentId: params.id,
           userMessage: parsed.data.message,
           onDelta: (chunk) => push("delta", { content: chunk }),
           onEvent: (ev) => {
-            if (ev.type === "started") push("started", ev.payload);
-            else if (ev.type === "completed") push("completed", ev.payload);
-            else if (ev.type === "failed") push("failed", ev.payload);
+            switch (ev.type) {
+              case "started":
+                push("started", ev.payload);
+                break;
+              case "tool_call":
+                push("tool_call", ev.payload);
+                break;
+              case "tool_result":
+                push("tool_result", ev.payload);
+                break;
+              case "completed":
+                push("completed", ev.payload);
+                break;
+              case "failed":
+                push("failed", ev.payload);
+                break;
+              // delta is handled via onDelta above
+              case "delta":
+                break;
+            }
           },
         });
       } catch (err) {
-        if (err instanceof GatewayError || err instanceof RunError) {
+        if (
+          err instanceof GatewayError ||
+          err instanceof RunError ||
+          err instanceof RunnerError
+        ) {
           push("failed", { code: err.code, detail: err.message });
         } else {
           push("failed", {

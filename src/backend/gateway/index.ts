@@ -4,7 +4,14 @@ import { GatewayError } from "./types";
 import type { LlmAdapter, LlmRequest, LlmResponse } from "./types";
 import type { Provider } from "@/shared/types/provider.types";
 
-export type { LlmMessage, LlmRequest, LlmResponse, LlmUsage } from "./types";
+export type {
+  LlmMessage,
+  LlmRequest,
+  LlmResponse,
+  LlmToolCall,
+  LlmToolDef,
+  LlmUsage,
+} from "./types";
 export { GatewayError } from "./types";
 
 function pickAdapter(provider: Provider): LlmAdapter {

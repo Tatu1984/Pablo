@@ -1,5 +1,12 @@
 import { GatewayError } from "@/backend/gateway/types";
-import type { LlmAdapter, LlmRequest, LlmResponse, LlmUsage } from "@/backend/gateway/types";
+import type {
+  LlmAdapter,
+  LlmMessage,
+  LlmRequest,
+  LlmResponse,
+  LlmToolCall,
+  LlmUsage,
+} from "@/backend/gateway/types";
 
 // Works with anything speaking OpenAI's chat-completions shape:
 // OpenRouter, OpenAI, OpenAI-compatible (Together/Groq/Fireworks/vLLM), Ollama.
@@ -13,7 +20,6 @@ function endpoint(req: LlmRequest): string {
 function headers(req: LlmRequest): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (req.apiKey) h.Authorization = `Bearer ${req.apiKey}`;
-  // OpenRouter is more cooperative when these are set.
   if (req.provider.type === "openrouter") {
     const site = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     h["HTTP-Referer"] = site;
@@ -22,23 +28,63 @@ function headers(req: LlmRequest): Record<string, string> {
   return h;
 }
 
+interface OutgoingMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
+  name?: string;
+}
+
+function encodeMessages(messages: LlmMessage[]): OutgoingMessage[] {
+  return messages.map((m) => {
+    const out: OutgoingMessage = { role: m.role, content: m.content ?? "" };
+    if (m.tool_calls?.length) {
+      out.tool_calls = m.tool_calls.map((tc) => ({
+        id: tc.id,
+        type: "function",
+        function: {
+          name: tc.name,
+          arguments:
+            typeof tc.arguments === "string"
+              ? tc.arguments
+              : JSON.stringify(tc.arguments ?? {}),
+        },
+      }));
+    }
+    if (m.tool_call_id) out.tool_call_id = m.tool_call_id;
+    if (m.name) out.name = m.name;
+    return out;
+  });
+}
+
 function body(req: LlmRequest, stream: boolean) {
   const payload: Record<string, unknown> = {
     model: req.model,
-    messages: req.messages,
+    messages: encodeMessages(req.messages),
     stream,
   };
   if (req.temperature !== undefined) payload.temperature = req.temperature;
   if (req.max_tokens !== undefined) payload.max_tokens = req.max_tokens;
   if (req.stop && req.stop.length) payload.stop = req.stop;
+  if (req.tools && req.tools.length) {
+    payload.tools = req.tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    }));
+    payload.tool_choice = "auto";
+  }
   if (stream) payload.stream_options = { include_usage: true };
   return JSON.stringify(payload);
 }
 
 function mapError(status: number, text: string): GatewayError {
   const retryable = status === 429 || status >= 500;
-  const code =
-    status === 429 ? "rate_limited" : status >= 500 ? "upstream" : "bad_request";
+  const code = status === 429 ? "rate_limited" : status >= 500 ? "upstream" : "bad_request";
   return new GatewayError(code, `Upstream ${status}: ${text.slice(0, 300)}`, status, retryable);
 }
 
@@ -78,6 +124,12 @@ export const openaiCompatibleAdapter: LlmAdapter = {
     let usage: LlmUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
     let finish: LlmResponse["finish_reason"] = "stop";
 
+    // Streaming tool_calls arrive as accumulating deltas keyed by their index.
+    const toolDelta = new Map<
+      number,
+      { id?: string; name?: string; argumentsBuf: string }
+    >();
+
     try {
       for (;;) {
         const { value, done } = await reader.read();
@@ -109,16 +161,40 @@ export const openaiCompatibleAdapter: LlmAdapter = {
             content += piece;
             onDelta(piece);
           }
-          if (choice?.finish_reason) {
-            finish = normaliseFinish(choice.finish_reason);
+          if (choice?.delta?.tool_calls) {
+            for (const tc of choice.delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              const slot = toolDelta.get(idx) ?? { argumentsBuf: "" };
+              if (tc.id) slot.id = tc.id;
+              if (tc.function?.name) slot.name = tc.function.name;
+              if (tc.function?.arguments) slot.argumentsBuf += tc.function.arguments;
+              toolDelta.set(idx, slot);
+            }
           }
+          if (choice?.finish_reason) finish = normaliseFinish(choice.finish_reason);
         }
       }
     } finally {
       reader.releaseLock();
     }
 
-    return { content, model, usage, finish_reason: finish };
+    const tool_calls: LlmToolCall[] = [];
+    for (const [, slot] of [...toolDelta.entries()].sort((a, b) => a[0] - b[0])) {
+      if (!slot.id || !slot.name) continue;
+      tool_calls.push({
+        id: slot.id,
+        name: slot.name,
+        arguments: tryParseJson(slot.argumentsBuf),
+      });
+    }
+
+    return {
+      content,
+      model,
+      usage,
+      finish_reason: finish,
+      tool_calls: tool_calls.length ? tool_calls : undefined,
+    };
   },
 };
 
@@ -127,7 +203,14 @@ export const openaiCompatibleAdapter: LlmAdapter = {
 interface OpenAIChatResponse {
   model?: string;
   choices: {
-    message: { content: string };
+    message: {
+      content: string | null;
+      tool_calls?: {
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }[];
+    };
     finish_reason?: string;
   }[];
   usage?: OpenAIUsage;
@@ -136,7 +219,14 @@ interface OpenAIChatResponse {
 interface OpenAIChatStreamChunk {
   model?: string;
   choices?: {
-    delta?: { content?: string };
+    delta?: {
+      content?: string;
+      tool_calls?: {
+        index?: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }[];
+    };
     finish_reason?: string;
   }[];
   usage?: OpenAIUsage;
@@ -150,8 +240,15 @@ interface OpenAIUsage {
 
 function normaliseFull(data: OpenAIChatResponse): LlmResponse {
   const choice = data.choices[0];
+  const content = choice?.message?.content ?? "";
+  const tool_calls: LlmToolCall[] | undefined = choice?.message?.tool_calls?.map((tc) => ({
+    id: tc.id,
+    name: tc.function.name,
+    arguments: tryParseJson(tc.function.arguments),
+  }));
   return {
-    content: choice?.message?.content ?? "",
+    content,
+    tool_calls: tool_calls?.length ? tool_calls : undefined,
     model: data.model ?? "",
     usage: normaliseUsage(data.usage),
     finish_reason: normaliseFinish(choice?.finish_reason),
@@ -177,5 +274,14 @@ function normaliseFinish(r?: string): LlmResponse["finish_reason"] {
       return r;
     default:
       return "stop";
+  }
+}
+
+function tryParseJson(raw: string): unknown {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
   }
 }

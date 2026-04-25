@@ -1,17 +1,38 @@
 import type { Provider } from "@/shared/types/provider.types";
 
-export type LlmRole = "system" | "user" | "assistant";
+export type LlmRole = "system" | "user" | "assistant" | "tool";
 
 export interface LlmMessage {
   role: LlmRole;
   content: string;
+  // Set when this is the assistant turn that emitted tool calls.
+  tool_calls?: LlmToolCall[];
+  // Set on tool-result messages so the model can correlate.
+  tool_call_id?: string;
+  // Echo of the tool name on tool-result messages.
+  name?: string;
+}
+
+export interface LlmToolCall {
+  id: string;
+  // The LLM-side function name (sanitised: "http_request"). The runner maps
+  // this back to the registry name ("http.request").
+  name: string;
+  arguments: unknown;
+}
+
+export interface LlmToolDef {
+  name: string; // LLM-side name (must match ^[A-Za-z0-9_-]{1,64}$)
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema
 }
 
 export interface LlmRequest {
   provider: Provider;
-  apiKey: string | null; // null allowed for ollama / bedrock-iam
+  apiKey: string | null;
   model: string;
   messages: LlmMessage[];
+  tools?: LlmToolDef[];
   temperature?: number;
   max_tokens?: number;
   stop?: string[];
@@ -25,6 +46,7 @@ export interface LlmUsage {
 
 export interface LlmResponse {
   content: string;
+  tool_calls?: LlmToolCall[];
   model: string;
   usage: LlmUsage;
   finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | "error";
@@ -32,12 +54,7 @@ export interface LlmResponse {
 }
 
 export interface LlmAdapter {
-  // Non-streaming call — returns the full response. All adapters implement this.
   call(req: LlmRequest, signal?: AbortSignal): Promise<LlmResponse>;
-
-  // Streaming call. Emits text chunks and resolves with the complete response.
-  // Optional — adapters without streaming support can lean on .call() and
-  // emit the whole result as a single chunk.
   stream?(
     req: LlmRequest,
     onDelta: (chunk: string) => void,
@@ -54,7 +71,8 @@ export class GatewayError extends Error {
       | "bad_request"
       | "upstream"
       | "timeout"
-      | "network",
+      | "network"
+      | "tools_unsupported",
     message: string,
     public status?: number,
     public retryable = false,
