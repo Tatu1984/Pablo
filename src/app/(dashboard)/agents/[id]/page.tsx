@@ -85,12 +85,18 @@ function ChatHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <Link
+          href={`/agents/${agent.id}/runs`}
+          className="rounded-md border border-ink-800 bg-ink-950 px-3 py-1.5 text-xs text-ink-300 hover:bg-ink-900"
+        >
+          Runs
+        </Link>
         {lastRunId && (
           <Link
             href={`/agents/${agent.id}/runs/${lastRunId}`}
             className="rounded-md border border-ink-800 bg-ink-950 px-3 py-1.5 text-xs text-ink-300 hover:bg-ink-900"
           >
-            Last run
+            Last
           </Link>
         )}
         <Link

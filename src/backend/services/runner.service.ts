@@ -9,6 +9,7 @@ import {
 } from "@/backend/repositories/run.repository";
 import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
+import { truncatePayload } from "@/backend/utils/payload.util";
 import { getTool, toolsForAgent } from "@/backend/tools/registry";
 import { fromLlmToolName, ToolError, toLlmToolName } from "@/backend/tools/types";
 import type { Tool, ToolContext } from "@/backend/tools/types";
@@ -135,12 +136,20 @@ export async function createMultiStepRun(opts: RunnerOptions) {
         );
       }
 
+      // Cancel-check before each LLM call. Reads runs.status; if the row
+      // has been flipped to cancelled by an external POST, bail cleanly.
+      if (await wasCancelled(runId)) {
+        throw new RunnerError("runtime_exceeded", "Run was cancelled.");
+      }
+
       stepCount++;
       await event("llm_call", `LLM call #${stepCount} → ${agent.model}`, {
         model: agent.model,
         provider_id: provider.id,
-        message_count: messages.length,
         step: stepCount,
+        message_count: messages.length,
+        messages: truncatePayload(messages),
+        tools: toolDefs.map((t) => t.name),
       });
 
       const response = await callLlm({
@@ -157,7 +166,14 @@ export async function createMultiStepRun(opts: RunnerOptions) {
       lastFinish = response.finish_reason;
       await event("llm_result", `LLM responded (${response.finish_reason})`, {
         usage: response.usage,
-        tool_calls: response.tool_calls?.map((c) => ({ id: c.id, name: c.name })) ?? [],
+        finish_reason: response.finish_reason,
+        content: truncatePayload(response.content),
+        tool_calls:
+          response.tool_calls?.map((c) => ({
+            id: c.id,
+            name: c.name,
+            arguments: truncatePayload(c.arguments),
+          })) ?? [],
       });
 
       // No tool calls — that's the final answer.
@@ -266,7 +282,8 @@ async function runToolCall(
   });
   await event("tool_call", `${registryName}`, {
     tool_call_id: call.id,
-    arguments: call.arguments,
+    name: registryName,
+    arguments: truncatePayload(call.arguments),
   });
 
   if (!tool) {
@@ -296,8 +313,9 @@ async function runToolCall(
   });
   await event("tool_result", `${registryName} → ${summary}`, {
     tool_call_id: call.id,
+    name: registryName,
     ok,
-    result,
+    result: truncatePayload(result),
   });
 
   messages.push({
@@ -316,6 +334,17 @@ function summariseToolOutput(value: unknown): string {
     if ("found" in obj) return obj.found ? "value found" : "no value";
   }
   return "ok";
+}
+
+// Cooperative cancel — the runner peeks runs.status before each LLM call.
+// Cancellation is requested by POST /api/runs/[id]/cancel, which sets the
+// row's status to "cancelled" and reason_code to "user_cancelled".
+async function wasCancelled(runId: string): Promise<boolean> {
+  const rows = await query<{ status: string }>(
+    `SELECT status FROM runs WHERE id = $1`,
+    [runId],
+  );
+  return rows[0]?.status === "cancelled";
 }
 
 // Lightweight pull of prior completed turns, the same shape as the one-shot path.

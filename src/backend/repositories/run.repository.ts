@@ -1,6 +1,53 @@
 import { query } from "@/backend/database/client";
 import type { Run, RunStatus, TraceStep } from "@/shared/types/run.types";
 
+export interface RunsForOrgFilter {
+  agentId?: string;
+  status?: RunStatus;
+  limit?: number;
+}
+
+export interface OrgRun extends Run {
+  agent_name: string;
+  agent_role: string;
+}
+
+// Org-wide listing with optional filters. Joins agent name so we don't have
+// to round-trip per row in the UI.
+export async function getRunsForOrg(
+  orgId: string,
+  filter: RunsForOrgFilter = {},
+): Promise<OrgRun[]> {
+  const limit = Math.min(filter.limit ?? 50, 200);
+  const params: unknown[] = [orgId];
+  let where = `r.org_id = $1`;
+  if (filter.agentId) {
+    params.push(filter.agentId);
+    where += ` AND r.agent_id = $${params.length}`;
+  }
+  if (filter.status) {
+    params.push(filter.status);
+    where += ` AND r.status = $${params.length}`;
+  }
+  params.push(limit);
+
+  return query<OrgRun>(
+    `SELECT r.id, r.agent_id, r.status, r.reason_code,
+            r.tokens_in, r.tokens_out, r.cost_cents, r.step_count, r.tool_call_count,
+            to_char(r.queued_at,   'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS queued_at,
+            to_char(r.started_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
+            to_char(r.finished_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS finished_at,
+            a.name AS agent_name,
+            COALESCE(a.role, '') AS agent_role
+       FROM runs r
+       JOIN agents a ON a.id = r.agent_id
+      WHERE ${where}
+      ORDER BY r.queued_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+}
+
 export async function getRunsForAgent(orgId: string, agentId: string): Promise<Run[]> {
   return query<Run>(
     `SELECT id, agent_id, status, reason_code,
@@ -111,6 +158,23 @@ export async function updateRun(id: string, patch: UpdateRunInput): Promise<void
       patch.finished ?? false,
     ],
   );
+}
+
+export async function cancelRun(orgId: string, runId: string): Promise<Run | null> {
+  const rows = await query<Run>(
+    `UPDATE runs
+        SET status      = 'cancelled',
+            reason_code = COALESCE(reason_code, 'user_cancelled'),
+            finished_at  = COALESCE(finished_at, now())
+      WHERE id = $1 AND org_id = $2 AND status IN ('queued', 'running')
+      RETURNING id, agent_id, status, reason_code,
+                tokens_in, tokens_out, cost_cents, step_count, tool_call_count,
+                to_char(queued_at,   'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS queued_at,
+                to_char(started_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at,
+                to_char(finished_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS finished_at`,
+    [runId, orgId],
+  );
+  return rows[0] ?? null;
 }
 
 export async function insertRunEvent(

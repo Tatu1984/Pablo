@@ -10,6 +10,7 @@ import {
 } from "@/backend/repositories/run.repository";
 import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
+import { truncatePayload } from "@/backend/utils/payload.util";
 import { createMultiStepRun } from "@/backend/services/runner.service";
 import type { RunnerEvent } from "@/backend/services/runner.service";
 
@@ -102,7 +103,9 @@ export async function createOneShotRun(opts: OneShotOptions) {
     await insertRunEvent(runId, 2, "llm_call", `LLM call → ${agent.model}`, {
       model: agent.model,
       provider_id: provider.id,
+      step: 1,
       message_count: messages.length,
+      messages: truncatePayload(messages),
     });
     // No "thinking" event — the UI shows a placeholder until first delta.
 
@@ -131,6 +134,7 @@ export async function createOneShotRun(opts: OneShotOptions) {
     await insertRunEvent(runId, 3, "llm_result", `Finished (${response.finish_reason})`, {
       usage: response.usage,
       finish_reason: response.finish_reason,
+      content: truncatePayload(response.content),
     });
     await insertRunEvent(runId, 4, "completed", "Run completed", null);
     await updateRun(runId, {

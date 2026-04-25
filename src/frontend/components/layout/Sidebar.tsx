@@ -8,6 +8,7 @@ import ThemeToggle from "@/frontend/components/ui/ThemeToggle";
 
 const SETTINGS_LINKS = [
   { href: "/providers", label: "Providers", hint: "LLM connections & BYO keys" },
+  { href: "/runs", label: "Runs", hint: "Every execution & full trace" },
   { href: "/usage", label: "Usage", hint: "Tokens, runs, cost" },
   { href: "/webhooks", label: "Webhooks", hint: "Event deliveries" },
   { href: "/keys", label: "API keys", hint: "Server-to-server access" },
