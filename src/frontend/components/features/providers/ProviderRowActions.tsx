@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -54,6 +55,12 @@ export default function ProviderRowActions({
   return (
     <div className="flex flex-col items-end gap-1.5">
       <div className="flex items-center gap-3">
+        <Link
+          href={`/providers/${providerId}/edit`}
+          className="text-ink-300 hover:text-ink-100"
+        >
+          Edit
+        </Link>
         <button
           type="button"
           onClick={onTest}

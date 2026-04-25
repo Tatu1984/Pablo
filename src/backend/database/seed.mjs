@@ -12,6 +12,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createCipheriv, randomBytes } from "node:crypto";
 import pg from "pg";
 import { hash as argonHash } from "@node-rs/argon2";
 
@@ -86,7 +87,63 @@ async function seed(client) {
   await client.query(`DELETE FROM agents          WHERE org_id = $1`, [d.org.id]);
   await client.query(`DELETE FROM providers       WHERE org_id = $1`, [d.org.id]);
 
-  console.log(`  seeded org + demo user; demo org workspace cleared`);
+  // Mirror auto-provision behaviour for the demo org: drop in an OpenRouter
+  // provider populated from OPENROUTER_API_KEY (encrypted with the same
+  // PROVIDER_ENCRYPTION_KEY the running app uses) so demo@pablo.ai can chat
+  // immediately on first login.
+  if (process.env.OPENROUTER_API_KEY) {
+    const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+    const encryptedKey = encryptSecretLikeApp(process.env.OPENROUTER_API_KEY);
+    const prefix = process.env.OPENROUTER_API_KEY.slice(0, 8);
+    await client.query(
+      `INSERT INTO providers
+         (id, org_id, name, type, base_url, key_prefix, encrypted_key, models, status, byo)
+       VALUES ($1, $2, 'OpenRouter', 'openrouter', $3, $4, $5, $6::jsonb, 'active', true)`,
+      [
+        cryptoIdLikeApp("prov"),
+        d.org.id,
+        baseUrl,
+        prefix,
+        encryptedKey,
+        JSON.stringify([
+          "openai/gpt-4o-mini",
+          "anthropic/claude-haiku-4.5",
+          "google/gemini-2.0-flash",
+          "meta/llama-3.1-70b-instruct",
+          "minimax/minimax-m2.5:free",
+        ]),
+      ],
+    );
+    console.log(`  seeded org + demo user + OpenRouter provider`);
+  } else {
+    console.log(`  seeded org + demo user (no OPENROUTER_API_KEY → empty workspace)`);
+  }
+}
+
+// ── Tiny replicas of the runtime utilities so the seed doesn't need to
+// transpile/import TypeScript. Keep these in sync with crypto.util.ts and
+// id.util.ts.
+
+function cryptoIdLikeApp(prefix) {
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  const bytes = randomBytes(16);
+  let out = "";
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return `${prefix}_${out}`;
+}
+
+function encryptSecretLikeApp(plain) {
+  const raw = process.env.PROVIDER_ENCRYPTION_KEY;
+  if (!raw) throw new Error("PROVIDER_ENCRYPTION_KEY is not set");
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) {
+    throw new Error(`PROVIDER_ENCRYPTION_KEY must decode to 32 bytes; got ${key.length}.`);
+  }
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1.${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString("base64")}`;
 }
 
 const SEED = {

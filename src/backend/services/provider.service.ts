@@ -29,6 +29,39 @@ function defaultBaseUrl(type: CreateProviderInput["type"]): string | null {
   return meta?.default_base_url ?? null;
 }
 
+// Default model list bootstrapped onto an auto-provisioned OpenRouter
+// provider — chosen to give a brand-new org something to chat with right
+// away. Users can prune or extend this on /providers/[id]/edit.
+const DEFAULT_OPENROUTER_MODELS = [
+  "openai/gpt-4o-mini",
+  "anthropic/claude-haiku-4.5",
+  "google/gemini-2.0-flash",
+  "meta/llama-3.1-70b-instruct",
+  "minimax/minimax-m2.5:free",
+];
+
+// Called from auth.service.register and seed.mjs. If OPENROUTER_API_KEY is
+// set in the environment, drops a BYO OpenRouter provider into the new org
+// so signup → chat works without a manual /providers/new step. The org
+// owns the provider and can rotate / delete it freely.
+export async function autoProvisionDefaultProvider(orgId: string): Promise<Provider | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+  return insertProvider({
+    id: newId("prov"),
+    orgId,
+    name: "OpenRouter",
+    type: "openrouter",
+    baseUrl,
+    keyPrefix: keyPrefix(apiKey),
+    encryptedKey: encryptSecret(apiKey),
+    models: DEFAULT_OPENROUTER_MODELS,
+    byo: true,
+  });
+}
+
 export async function createProvider(
   orgId: string,
   input: CreateProviderInput,

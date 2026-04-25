@@ -1,5 +1,6 @@
 import { hashPassword, verifyPassword } from "@/backend/utils/hash.util";
 import { newId } from "@/backend/utils/id.util";
+import { autoProvisionDefaultProvider } from "@/backend/services/provider.service";
 import { signSession, type SessionPayload } from "@/backend/utils/jwt.util";
 import {
   findUserByEmail,
@@ -34,6 +35,13 @@ export async function register(input: RegisterInput): Promise<{
   const user = await insertUser(userId, input.email, passwordHash);
   const org = await insertOrg(orgId, input.org);
   await insertOrgMember(org.id, user.id, "owner");
+
+  // Best-effort default provider — don't block signup if it fails.
+  try {
+    await autoProvisionDefaultProvider(org.id);
+  } catch (err) {
+    console.error("autoProvisionDefaultProvider failed for new org", org.id, err);
+  }
 
   const token = await signSession({
     user_id: user.id,

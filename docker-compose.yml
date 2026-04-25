@@ -1,0 +1,19 @@
+# Local infra for the Pablo worker. Just Redis for now — Postgres lives at
+# Neon, S3 / OpenTelemetry land in later phases.
+#
+#   docker compose up -d redis     # start
+#   docker compose down            # stop
+#
+# Then set REDIS_URL=redis://localhost:6379 in .env.local and `npm run worker`.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
