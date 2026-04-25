@@ -6,6 +6,7 @@ import { requireSession } from "@/backend/services/session.service";
 import { GatewayError } from "@/backend/gateway";
 import { QuotaError } from "@/backend/services/quota.service";
 import { newId } from "@/backend/utils/id.util";
+import { rateLimit, tooManyRequests } from "@/backend/utils/rate-limit.util";
 import { getAgent } from "@/backend/repositories/agent.repository";
 import {
   eventChannel,
@@ -25,6 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch {
     return new Response("Unauthorized", { status: 401 });
   }
+
+  // Cap chat throughput per user — protects the LLM key from a runaway tab.
+  const rl = await rateLimit({
+    key: `chat:${session.user.id}`,
+    max: 30,
+    windowSec: 60,
+  });
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
   let body: unknown;
   try {

@@ -7,6 +7,7 @@ import { createRun } from "@/backend/services/run.service";
 import { GatewayError } from "@/backend/gateway";
 import { QuotaError } from "@/backend/services/quota.service";
 import { RunnerError } from "@/backend/services/runner.service";
+import { rateLimit, tooManyRequests } from "@/backend/utils/rate-limit.util";
 
 // /v1/agents/{id}/runs
 //   POST  → 202 {run_id, status:"queued"} per dev guide §7.4. The body
@@ -28,6 +29,11 @@ function userMessage(body: unknown): string | null {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await withV1Auth(req);
   if ("error" in auth) return auth.error;
+
+  // Per-key rate limit: 60 runs / minute / key (or per-org for cookie-auth).
+  const rlKey = auth.ctx.api_key_id ?? auth.ctx.org_id;
+  const rl = await rateLimit({ key: `v1:runs:${rlKey}`, max: 60, windowSec: 60 });
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
   const agent = await getAgent(auth.ctx.org_id, params.id);
   if (!agent) {

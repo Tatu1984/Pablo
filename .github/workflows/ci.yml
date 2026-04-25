@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          # Build only does static analysis + bundling — no DB calls happen,
+          # but our env validator wants these to exist.
+          DATABASE_URL: postgres://placeholder@localhost/placeholder
+          JWT_SECRET: ci-only-not-real-32bytes-base64-aaaa=
+          PROVIDER_ENCRYPTION_KEY: ci-only-not-real-32bytes-base64-aaaa=

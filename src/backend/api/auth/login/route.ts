@@ -8,8 +8,13 @@ import {
   validationError,
 } from "@/backend/utils/error-handler.util";
 import { SESSION_COOKIE, SESSION_COOKIE_MAX_AGE } from "@/backend/utils/jwt.util";
+import { clientIp, rateLimit, tooManyRequests } from "@/backend/utils/rate-limit.util";
 
 export async function POST(req: NextRequest) {
+  const ip = clientIp(req.headers);
+  const limit = await rateLimit({ key: `auth:login:${ip}`, max: 10, windowSec: 60 });
+  if (!limit.allowed) return tooManyRequests(limit.retryAfterSec);
+
   let body: unknown;
   try {
     body = await req.json();

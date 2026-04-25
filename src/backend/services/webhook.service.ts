@@ -1,4 +1,5 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { signWebhookBody } from "@/backend/utils/sign.util";
 import {
   deleteWebhook,
   getWebhook,
@@ -91,7 +92,6 @@ export async function removeWebhook(orgId: string, id: string) {
 
 // ─── delivery ───────────────────────────────────────────────────────────────
 
-const SIGNING_VERSION = "v1";
 const RETRY_DELAYS_MS = [0, 1_000, 5_000, 30_000];
 
 export interface DeliveryAttemptResult {
@@ -100,11 +100,9 @@ export interface DeliveryAttemptResult {
   error: string | null;
 }
 
-export function signBody(secret: string, ts: number, body: string): string {
-  const h = createHmac("sha256", secret);
-  h.update(`${ts}.${body}`);
-  return `t=${ts},${SIGNING_VERSION}=${h.digest("hex")}`;
-}
+// Re-export so external callers (and tests) can sign without pulling the
+// service module. The actual implementation lives in utils/sign.util.ts.
+export { signWebhookBody as signBody };
 
 async function attemptOnce(
   url: string,
@@ -112,7 +110,7 @@ async function attemptOnce(
   body: string,
 ): Promise<DeliveryAttemptResult> {
   const ts = Math.floor(Date.now() / 1000);
-  const signature = signBody(secret, ts, body);
+  const signature = signWebhookBody(secret, ts, body);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8_000);
