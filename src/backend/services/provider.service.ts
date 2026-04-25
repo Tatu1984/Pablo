@@ -5,6 +5,7 @@ import { transaction } from "@/backend/database/client";
 import {
   countAgentsUsingProvider,
   getProvider,
+  getProviderEncrypted,
   insertProvider,
   updateProvider as updateProviderRow,
 } from "@/backend/repositories/provider.repository";
@@ -152,9 +153,11 @@ export async function testProvider(
   const url = base.replace(/\/$/, "") + "/models";
   const headers: Record<string, string> = { Accept: "application/json" };
   if (provider.type !== "ollama") {
-    const encrypted = await getEncryptedKey(orgId, id);
-    if (!encrypted) throw new ProviderError("missing_key", "No API key on file for this provider.");
-    headers.Authorization = `Bearer ${decryptSecret(encrypted)}`;
+    const full = await getProviderEncrypted(orgId, id);
+    if (!full?.encrypted_key) {
+      throw new ProviderError("missing_key", "No API key on file for this provider.");
+    }
+    headers.Authorization = `Bearer ${decryptSecret(full.encrypted_key)}`;
   }
 
   try {
@@ -179,17 +182,6 @@ export async function testProvider(
     const detail = err instanceof Error ? err.message : String(err);
     return { ok: false, status: null, message: `Could not reach ${url}: ${detail}` };
   }
-}
-
-async function getEncryptedKey(orgId: string, id: string): Promise<string | null> {
-  // Read the encrypted_key column directly; getProvider deliberately excludes it.
-  const rows = await (
-    await import("@/backend/database/client")
-  ).query<{ encrypted_key: string | null }>(
-    `SELECT encrypted_key FROM providers WHERE id = $1 AND org_id = $2`,
-    [id, orgId],
-  );
-  return rows[0]?.encrypted_key ?? null;
 }
 
 function extractModelList(body: unknown): string[] {

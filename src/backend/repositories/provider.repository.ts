@@ -13,6 +13,23 @@ export async function getProviders(orgId: string): Promise<Provider[]> {
   );
 }
 
+// Server-only read that returns the encrypted key too. Never return this from
+// an HTTP handler — the gateway/service is the only legitimate caller.
+export async function getProviderEncrypted(
+  orgId: string,
+  id: string,
+): Promise<(Provider & { encrypted_key: string | null }) | null> {
+  const rows = await query<Provider & { encrypted_key: string | null }>(
+    `SELECT id, name, type, base_url, key_prefix, encrypted_key, models, status, byo,
+            to_char(created_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+            to_char(last_used_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_used_at
+       FROM providers
+      WHERE id = $1 AND org_id = $2`,
+    [id, orgId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function getProvider(orgId: string, id: string): Promise<Provider | null> {
   const rows = await query<Provider>(
     `SELECT id, name, type, base_url, key_prefix, models, status, byo,
