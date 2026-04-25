@@ -1,6 +1,13 @@
 # Pablo — AI Agents Platform
 
-Programmable, tool-enabled, cost-bounded agents. See [`Developer_Guide.md`](Developer_Guide.md) for the full design.
+Programmable, tool-enabled, cost-bounded agents.
+
+- **[`ENGINEERING_HANDBOOK.md`](ENGINEERING_HANDBOOK.md)** — what's built, where
+  to find it, how to run it, how to extend it, what's left for production.
+  Read this first.
+- [`Developer_Guide.md`](Developer_Guide.md) — original product / design doc.
+  Aspirational; some parts are not built yet (see the handbook for the as-built
+  state).
 
 ## Quick start
 
