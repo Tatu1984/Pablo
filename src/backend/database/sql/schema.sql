@@ -91,6 +91,34 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS runs_agent_queued_idx ON runs(agent_id, queued_at DESC);
 
+-- Subscription state per org. Mirrored from Stripe webhooks; the code-side
+-- PLANS constant is the source of truth for limits — `plan` here just maps
+-- the org to a known tier ID.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  org_id              TEXT PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
+  plan                TEXT NOT NULL DEFAULT 'starter',
+  status              TEXT NOT NULL DEFAULT 'active',
+  stripe_customer_id  TEXT,
+  stripe_sub_id       TEXT,
+  current_period_end  TIMESTAMPTZ,
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Per-org per-period (YYYY-MM UTC) usage meter. Reset implicitly each month
+-- by upserting the row for the current period — old rows stay as history.
+CREATE TABLE IF NOT EXISTS quotas (
+  org_id           TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  period           TEXT NOT NULL, -- YYYY-MM UTC
+  runs_used        INTEGER NOT NULL DEFAULT 0,
+  runs_limit       INTEGER NOT NULL,
+  tokens_used      INTEGER NOT NULL DEFAULT 0,
+  tokens_limit     INTEGER NOT NULL,
+  cost_cents_used  INTEGER NOT NULL DEFAULT 0,
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, period)
+);
+CREATE INDEX IF NOT EXISTS quotas_org_period_idx ON quotas(org_id, period DESC);
+
 -- Per-agent persistent memory (key/value JSON store), per dev guide §3.6.
 -- Read and written by the memory.read / memory.write tools.
 CREATE TABLE IF NOT EXISTS agent_memory (

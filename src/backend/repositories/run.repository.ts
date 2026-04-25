@@ -160,6 +160,61 @@ export async function updateRun(id: string, patch: UpdateRunInput): Promise<void
   );
 }
 
+export interface AgentUsage {
+  agent_id: string;
+  agent_name: string;
+  runs: number;
+  tokens: number;
+  cost_cents: number;
+}
+
+// Per-agent rollup for the given month-window (period = YYYY-MM UTC).
+export async function getAgentUsageForPeriod(
+  orgId: string,
+  period: string,
+): Promise<AgentUsage[]> {
+  return query<AgentUsage>(
+    `SELECT a.id          AS agent_id,
+            a.name        AS agent_name,
+            COUNT(r.id)::int                                   AS runs,
+            COALESCE(SUM(r.tokens_in + r.tokens_out), 0)::int  AS tokens,
+            COALESCE(SUM(r.cost_cents), 0)::int                AS cost_cents
+       FROM agents a
+       LEFT JOIN runs r
+         ON r.agent_id = a.id
+        AND to_char(r.queued_at, 'YYYY-MM') = $2
+      WHERE a.org_id = $1
+      GROUP BY a.id, a.name
+      ORDER BY tokens DESC, runs DESC, a.name ASC`,
+    [orgId, period],
+  );
+}
+
+// 14-day daily run counts; powers the usage chart.
+export async function getDailyRunCounts(
+  orgId: string,
+  days = 14,
+): Promise<{ day: string; runs: number }[]> {
+  return query<{ day: string; runs: number }>(
+    `WITH series AS (
+       SELECT generate_series(
+         (now() AT TIME ZONE 'UTC')::date - ($2::int - 1),
+         (now() AT TIME ZONE 'UTC')::date,
+         '1 day'::interval
+       )::date AS day
+     )
+     SELECT to_char(s.day, 'YYYY-MM-DD')         AS day,
+            COUNT(r.id)::int                     AS runs
+       FROM series s
+       LEFT JOIN runs r
+         ON r.org_id = $1
+        AND (r.queued_at AT TIME ZONE 'UTC')::date = s.day
+      GROUP BY s.day
+      ORDER BY s.day ASC`,
+    [orgId, days],
+  );
+}
+
 export async function cancelRun(orgId: string, runId: string): Promise<Run | null> {
   const rows = await query<Run>(
     `UPDATE runs

@@ -10,6 +10,7 @@ import {
 import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
 import { truncatePayload } from "@/backend/utils/payload.util";
+import { assertCanRun, QuotaError, recordRunUsage } from "@/backend/services/quota.service";
 import { getTool, toolsForAgent } from "@/backend/tools/registry";
 import { fromLlmToolName, ToolError, toLlmToolName } from "@/backend/tools/types";
 import type { Tool, ToolContext } from "@/backend/tools/types";
@@ -76,7 +77,10 @@ export async function createMultiStepRun(opts: RunnerOptions) {
   }));
   const toolByLlmName = new Map(tools.map((t) => [toLlmToolName(t.name), t]));
 
-  // ── 2. Persist the run ────────────────────────────────────────────────────
+  // ── 2. Quota guard ────────────────────────────────────────────────────────
+  await assertCanRun(orgId);
+
+  // ── 3. Persist the run ────────────────────────────────────────────────────
   const runId = newId("run");
   await insertRun(runId, orgId, agentId, { message: userMessage });
   opts.onEvent?.({ type: "started", payload: { run_id: runId } });
@@ -215,6 +219,7 @@ export async function createMultiStepRun(opts: RunnerOptions) {
       finished: true,
     });
     await touchProvider(provider.id);
+    await recordRunUsage(orgId, totalIn, totalOut);
 
     const usage: LlmUsageSummary = {
       prompt_tokens: totalIn,

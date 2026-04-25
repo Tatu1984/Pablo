@@ -11,6 +11,7 @@ import {
 import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
 import { truncatePayload } from "@/backend/utils/payload.util";
+import { assertCanRun, QuotaError, recordRunUsage } from "@/backend/services/quota.service";
 import { createMultiStepRun } from "@/backend/services/runner.service";
 import type { RunnerEvent } from "@/backend/services/runner.service";
 
@@ -73,7 +74,11 @@ export async function createOneShotRun(opts: OneShotOptions) {
   const versions = await listPromptVersions(orgId, agentId);
   const current = versions.find((v) => v.version === agent.current_prompt_version);
 
-  // ── 2. Persist the run row so the rest of the work is traceable ───────────
+  // ── 2. Quota guard — refuse to even insert the run if the org is over the
+  //    monthly plan ceiling (developer guide §3.1).
+  await assertCanRun(orgId);
+
+  // ── 3. Persist the run row so the rest of the work is traceable ───────────
   const runId = newId("run");
   await insertRun(runId, orgId, agentId, { message: userMessage });
   opts.onEvent?.({ type: "started", payload: { run_id: runId } });
@@ -147,6 +152,7 @@ export async function createOneShotRun(opts: OneShotOptions) {
       finished: true,
     });
     await touchProvider(provider.id);
+    await recordRunUsage(orgId, response.usage.prompt_tokens, response.usage.completion_tokens);
 
     opts.onEvent?.({
       type: "completed",

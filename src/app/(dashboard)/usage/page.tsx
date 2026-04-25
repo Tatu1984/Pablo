@@ -1,49 +1,62 @@
+import Link from "next/link";
 import PageFrame from "@/frontend/components/layout/PageFrame";
 import PageHeader from "@/frontend/components/layout/PageHeader";
-import { getAgents } from "@/backend/repositories/agent.repository";
+import {
+  getAgentUsageForPeriod,
+  getDailyRunCounts,
+} from "@/backend/repositories/run.repository";
+import { quotaForOrg } from "@/backend/services/quota.service";
 import { requireSession } from "@/backend/services/session.service";
-
-const FAKE_VOLUMES = [
-  { runs: 128, tokens: 312_400, cost_cents: 0 },
-  { runs: 942, tokens: 1_812_300, cost_cents: 0 },
-  { runs: 14, tokens: 88_210, cost_cents: 0 },
-];
-
-const DAYS = Array.from({ length: 14 }, (_, i) => ({
-  day: `2026-04-${String(10 + i).padStart(2, "0")}`,
-  runs: Math.round(40 + Math.sin(i / 2) * 25 + Math.random() * 18),
-}));
-const maxRuns = Math.max(...DAYS.map((d) => d.runs));
+import { currentPeriod, planFor } from "@/shared/constants/plans";
+import { ensureSubscription } from "@/backend/repositories/subscription.repository";
 
 export default async function UsagePage() {
   const { org } = await requireSession();
-  const agents = await getAgents(org.id);
-  const USAGE_BY_AGENT = agents.map((a, i) => ({
-    agent_id: a.id,
-    agent_name: a.name,
-    ...(FAKE_VOLUMES[i] ?? { runs: 0, tokens: 0, cost_cents: 0 }),
-  }));
-  const totalRuns = USAGE_BY_AGENT.reduce((a, b) => a + b.runs, 0);
-  const totalTokens = USAGE_BY_AGENT.reduce((a, b) => a + b.tokens, 0);
+  const period = currentPeriod();
+
+  const [quota, sub, byAgent, daily] = await Promise.all([
+    quotaForOrg(org.id),
+    ensureSubscription(org.id),
+    getAgentUsageForPeriod(org.id, period),
+    getDailyRunCounts(org.id, 14),
+  ]);
+  const plan = planFor(sub.plan);
+
+  const totalRuns = byAgent.reduce((a, b) => a + b.runs, 0);
+  const totalTokens = byAgent.reduce((a, b) => a + b.tokens, 0);
+  const totalCostCents = byAgent.reduce((a, b) => a + b.cost_cents, 0);
+
+  const maxRuns = Math.max(1, ...daily.map((d) => d.runs));
 
   return (
     <PageFrame>
       <PageHeader
         title="Usage"
-        description="Tokens, runs, and cost rolled up across your org. Hard quotas are enforced before a run is enqueued."
+        description={`Tokens, runs, and cost for ${period} (UTC). Hard quotas are enforced before a run is enqueued.`}
+        actions={
+          <Link
+            href="/billing"
+            className="rounded-md border border-ink-800 bg-ink-950 px-3 py-1.5 text-sm text-ink-300 hover:bg-ink-900"
+          >
+            {plan.label} plan
+          </Link>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Runs (30d)" value={totalRuns.toLocaleString()} />
-        <Stat label="Tokens (30d)" value={totalTokens.toLocaleString()} />
-        <Stat label="Cost (30d)" value="$0.00" />
-        <Stat label="Quota used" value="24%" />
+        <Stat label="Runs (period)" value={totalRuns.toLocaleString()} />
+        <Stat label="Tokens (period)" value={totalTokens.toLocaleString()} />
+        <Stat label="Cost (period)" value={`$${(totalCostCents / 100).toFixed(2)}`} />
+        <Stat
+          label="Quota used"
+          value={`${pct(quota.tokens_used, quota.tokens_limit)}%`}
+        />
       </div>
 
       <section className="mb-6 rounded-lg border border-ink-800 bg-ink-950 p-5">
         <h3 className="text-sm font-semibold text-ink-100">Runs, last 14 days</h3>
         <div className="mt-4 flex h-40 items-end gap-1">
-          {DAYS.map((d) => (
+          {daily.map((d) => (
             <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
               <div className="flex h-full w-full items-end">
                 <div
@@ -71,13 +84,17 @@ export default async function UsagePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-800 bg-ink-950">
-              {USAGE_BY_AGENT.map((u) => (
+              {byAgent.map((u) => (
                 <tr key={u.agent_id}>
                   <td className="px-4 py-3">
-                    <div className="text-ink-100">{u.agent_name}</div>
+                    <Link href={`/agents/${u.agent_id}`} className="text-ink-100 hover:text-white">
+                      {u.agent_name}
+                    </Link>
                     <div className="mono text-[11px] text-ink-500">{u.agent_id}</div>
                   </td>
-                  <td className="mono px-4 py-3 text-xs text-ink-300">{u.runs.toLocaleString()}</td>
+                  <td className="mono px-4 py-3 text-xs text-ink-300">
+                    {u.runs.toLocaleString()}
+                  </td>
                   <td className="mono px-4 py-3 text-xs text-ink-300">
                     {u.tokens.toLocaleString()}
                   </td>
@@ -86,6 +103,13 @@ export default async function UsagePage() {
                   </td>
                 </tr>
               ))}
+              {byAgent.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-xs text-ink-500">
+                    No agents yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -101,4 +125,9 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="mono mt-1 text-lg text-ink-50">{value}</div>
     </div>
   );
+}
+
+function pct(used: number, limit: number): number {
+  if (!limit) return 0;
+  return Math.min(100, Math.round((used / limit) * 100));
 }

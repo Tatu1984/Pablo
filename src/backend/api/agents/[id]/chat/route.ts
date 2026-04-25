@@ -4,6 +4,7 @@ import { createRun, RunError } from "@/backend/services/run.service";
 import { RunnerError } from "@/backend/services/runner.service";
 import { requireSession } from "@/backend/services/session.service";
 import { GatewayError } from "@/backend/gateway";
+import { QuotaError } from "@/backend/services/quota.service";
 import { newId } from "@/backend/utils/id.util";
 import { getAgent } from "@/backend/repositories/agent.repository";
 import {
@@ -103,7 +104,13 @@ function buildInlineStream(
           },
         });
       } catch (err) {
-        if (
+        if (err instanceof QuotaError) {
+          push("failed", {
+            code: err.code,
+            detail: err.message,
+            quota: err.quota,
+          });
+        } else if (
           err instanceof GatewayError ||
           err instanceof RunError ||
           err instanceof RunnerError
