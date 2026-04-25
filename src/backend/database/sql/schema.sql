@@ -91,6 +91,33 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS runs_agent_queued_idx ON runs(agent_id, queued_at DESC);
 
+-- Outbound webhooks: registration + delivery audit trail. Each webhook
+-- has its own signing secret (HMAC-SHA256 over the raw body).
+CREATE TABLE IF NOT EXISTS webhooks (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  url         TEXT NOT NULL,
+  events      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  secret      TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  disabled_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS webhooks_org_idx ON webhooks(org_id) WHERE disabled_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id              TEXT PRIMARY KEY,
+  webhook_id      TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+  event           TEXT NOT NULL,
+  payload         JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  attempt         INTEGER NOT NULL DEFAULT 0,
+  last_status     INTEGER,
+  last_error      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_attempt_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS webhook_deliveries_wh_idx ON webhook_deliveries(webhook_id, created_at DESC);
+
 -- API keys for the public /v1 surface. Plaintext is shown to the user
 -- exactly once; only the SHA-256 hash and an 8-char prefix live in the DB.
 CREATE TABLE IF NOT EXISTS api_keys (

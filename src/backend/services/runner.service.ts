@@ -11,6 +11,7 @@ import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
 import { truncatePayload } from "@/backend/utils/payload.util";
 import { assertCanRun, QuotaError, recordRunUsage } from "@/backend/services/quota.service";
+import { dispatchEvent } from "@/backend/services/webhook.service";
 import { getTool, toolsForAgent } from "@/backend/tools/registry";
 import { fromLlmToolName, ToolError, toLlmToolName } from "@/backend/tools/types";
 import type { Tool, ToolContext } from "@/backend/tools/types";
@@ -220,6 +221,15 @@ export async function createMultiStepRun(opts: RunnerOptions) {
     });
     await touchProvider(provider.id);
     await recordRunUsage(orgId, totalIn, totalOut);
+    void dispatchEvent(orgId, "execution.completed", {
+      run_id: runId,
+      agent_id: agentId,
+      status: "completed",
+      finish_reason: lastFinish,
+      tokens_in: totalIn,
+      tokens_out: totalOut,
+      output: { message: finalContent },
+    }).catch((e) => console.error("webhook dispatch failed:", e));
 
     const usage: LlmUsageSummary = {
       prompt_tokens: totalIn,
@@ -258,6 +268,12 @@ export async function createMultiStepRun(opts: RunnerOptions) {
       finished: true,
     });
     opts.onEvent?.({ type: "failed", payload: { run_id: runId, code, detail } });
+    const cancelled = code === "runtime_exceeded" && /cancelled/i.test(detail);
+    void dispatchEvent(
+      orgId,
+      cancelled ? "execution.cancelled" : "execution.failed",
+      { run_id: runId, agent_id: agentId, code, detail },
+    ).catch((e) => console.error("webhook dispatch failed:", e));
     throw err;
   }
 }

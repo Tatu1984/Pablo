@@ -12,6 +12,7 @@ import { decryptSecret } from "@/backend/utils/crypto.util";
 import { newId } from "@/backend/utils/id.util";
 import { truncatePayload } from "@/backend/utils/payload.util";
 import { assertCanRun, QuotaError, recordRunUsage } from "@/backend/services/quota.service";
+import { dispatchEvent } from "@/backend/services/webhook.service";
 import { createMultiStepRun } from "@/backend/services/runner.service";
 import type { RunnerEvent } from "@/backend/services/runner.service";
 
@@ -153,6 +154,15 @@ export async function createOneShotRun(opts: OneShotOptions) {
     });
     await touchProvider(provider.id);
     await recordRunUsage(orgId, response.usage.prompt_tokens, response.usage.completion_tokens);
+    void dispatchEvent(orgId, "execution.completed", {
+      run_id: runId,
+      agent_id: agentId,
+      status: "completed",
+      finish_reason: response.finish_reason,
+      tokens_in: response.usage.prompt_tokens,
+      tokens_out: response.usage.completion_tokens,
+      output: { message: assembled || response.content },
+    }).catch((e) => console.error("webhook dispatch failed:", e));
 
     opts.onEvent?.({
       type: "completed",
@@ -177,6 +187,12 @@ export async function createOneShotRun(opts: OneShotOptions) {
       finished: true,
     });
     opts.onEvent?.({ type: "failed", payload: { run_id: runId, code, detail } });
+    void dispatchEvent(orgId, "execution.failed", {
+      run_id: runId,
+      agent_id: agentId,
+      code,
+      detail,
+    }).catch((e) => console.error("webhook dispatch failed:", e));
     throw err;
   }
 }
