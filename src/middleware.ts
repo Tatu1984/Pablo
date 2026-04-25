@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/backend/utils/jwt.util";
 
-const PUBLIC_PREFIXES = ["/login", "/register", "/api/auth"];
+// Routes that bypass the dashboard cookie-auth gate. /v1 has its own bearer
+// auth checked inside each handler; the Stripe webhook is signature-verified.
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/register",
+  "/api/auth",
+  "/v1",
+  "/api/v1",
+  "/api/billing/webhook",
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

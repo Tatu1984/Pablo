@@ -1,45 +1,21 @@
 import PageFrame from "@/frontend/components/layout/PageFrame";
 import PageHeader from "@/frontend/components/layout/PageHeader";
+import IssueKeyDialog from "@/frontend/components/features/keys/IssueKeyDialog";
+import RevokeKeyButton from "@/frontend/components/features/keys/RevokeKeyButton";
 import { fmtDate } from "@/frontend/utils/formatters";
+import { listKeys } from "@/backend/services/api-key.service";
+import { requireSession } from "@/backend/services/session.service";
 
-const KEYS = [
-  {
-    id: "key_01HS77ZZB01",
-    name: "production",
-    prefix: "sk_live_8fRx",
-    created_at: "2026-02-03T12:10:00Z",
-    last_used_at: "2026-04-23T09:55:12Z",
-    revoked_at: null,
-  },
-  {
-    id: "key_01HS77ZZB02",
-    name: "staging",
-    prefix: "sk_live_1m2W",
-    created_at: "2026-03-14T08:05:00Z",
-    last_used_at: "2026-04-22T18:20:03Z",
-    revoked_at: null,
-  },
-  {
-    id: "key_01HS77ZZB03",
-    name: "intern-sandbox",
-    prefix: "sk_live_0p0p",
-    created_at: "2026-03-27T16:30:00Z",
-    last_used_at: null,
-    revoked_at: "2026-04-15T10:00:00Z",
-  },
-];
+export default async function KeysPage() {
+  const { org } = await requireSession();
+  const keys = await listKeys(org.id);
 
-export default function KeysPage() {
   return (
     <PageFrame>
       <PageHeader
         title="API keys"
         description="API keys authenticate server-to-server calls to /v1. Plaintext is shown exactly once on creation."
-        actions={
-          <button className="rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700">
-            Issue key
-          </button>
-        }
+        actions={<IssueKeyDialog />}
       />
 
       <div className="overflow-x-auto rounded-lg border border-ink-800">
@@ -55,7 +31,7 @@ export default function KeysPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-800 bg-ink-950">
-            {KEYS.map((k) => (
+            {keys.map((k) => (
               <tr key={k.id}>
                 <td className="px-4 py-3">
                   <div className="text-ink-100">{k.name}</div>
@@ -76,12 +52,17 @@ export default function KeysPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-right text-xs">
-                  {!k.revoked_at && (
-                    <button className="text-red-400 hover:text-red-300">Revoke</button>
-                  )}
+                  {!k.revoked_at && <RevokeKeyButton keyId={k.id} />}
                 </td>
               </tr>
             ))}
+            {keys.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-xs text-ink-500">
+                  No keys yet. Click <span className="mono">Issue key</span> to create one.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

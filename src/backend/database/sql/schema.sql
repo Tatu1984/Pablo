@@ -91,6 +91,22 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS runs_agent_queued_idx ON runs(agent_id, queued_at DESC);
 
+-- API keys for the public /v1 surface. Plaintext is shown to the user
+-- exactly once; only the SHA-256 hash and an 8-char prefix live in the DB.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id           TEXT PRIMARY KEY,
+  org_id       TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  prefix       TEXT NOT NULL,
+  hash         TEXT NOT NULL,
+  created_by   TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS api_keys_hash_idx ON api_keys(hash) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS api_keys_org_idx  ON api_keys(org_id);
+
 -- Subscription state per org. Mirrored from Stripe webhooks; the code-side
 -- PLANS constant is the source of truth for limits — `plan` here just maps
 -- the org to a known tier ID.
