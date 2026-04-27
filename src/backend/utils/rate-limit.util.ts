@@ -38,31 +38,44 @@ export async function rateLimit(args: RateLimitArgs): Promise<RateLimitResult> {
   const windowMs = args.windowSec * 1_000;
 
   if (isQueueEnabled()) {
-    const r = getRedis();
-    const fullKey = `pablo:rl:${args.key}`;
-    // INCR + set EXPIRE on first use. Pipeline keeps it atomic-enough.
-    const pipeline = r.multi();
-    pipeline.incr(fullKey);
-    pipeline.expire(fullKey, args.windowSec, "NX");
-    pipeline.pttl(fullKey);
-    const reply = await pipeline.exec();
-    if (!reply) {
-      return { allowed: true, remaining: args.max, retryAfterSec: 0 };
-    }
-    const count = Number(reply[0]?.[1] ?? 0);
-    const ttlMs = Number(reply[2]?.[1] ?? windowMs);
-    if (count > args.max) {
+    try {
+      const r = getRedis();
+      const fullKey = `pablo:rl:${args.key}`;
+      // INCR + set EXPIRE on first use. Pipeline keeps it atomic-enough.
+      const pipeline = r.multi();
+      pipeline.incr(fullKey);
+      pipeline.expire(fullKey, args.windowSec, "NX");
+      pipeline.pttl(fullKey);
+      // Race against a short deadline so an unreachable REDIS_URL can't
+      // hang the function for 300s — we'd rather fall through to the
+      // in-memory limiter than block login.
+      const reply = await Promise.race([
+        pipeline.exec(),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("rate-limit redis timeout")), 1_500),
+        ),
+      ]);
+      if (!reply) {
+        return { allowed: true, remaining: args.max, retryAfterSec: 0 };
+      }
+      const count = Number(reply[0]?.[1] ?? 0);
+      const ttlMs = Number(reply[2]?.[1] ?? windowMs);
+      if (count > args.max) {
+        return {
+          allowed: false,
+          remaining: 0,
+          retryAfterSec: Math.max(1, Math.ceil(ttlMs / 1000)),
+        };
+      }
       return {
-        allowed: false,
-        remaining: 0,
-        retryAfterSec: Math.max(1, Math.ceil(ttlMs / 1000)),
+        allowed: true,
+        remaining: Math.max(0, args.max - count),
+        retryAfterSec: 0,
       };
+    } catch (err) {
+      console.warn("rate-limit: redis unavailable, using memory fallback:", err);
+      // fall through to the in-memory store below
     }
-    return {
-      allowed: true,
-      remaining: Math.max(0, args.max - count),
-      retryAfterSec: 0,
-    };
   }
 
   const m = memStore();

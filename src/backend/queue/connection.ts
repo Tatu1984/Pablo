@@ -12,10 +12,16 @@ declare global {
 function makeClient(): IORedis {
   const url = process.env.REDIS_URL;
   if (!url) throw new Error("REDIS_URL is not set");
-  return new IORedis(url, {
+  const client = new IORedis(url, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    connectTimeout: 2_000,
   });
+  // Without an `error` listener ioredis prints "[ioredis] Unhandled error
+  // event" and the noise floods the log. Callers (rate-limit, chat SSE,
+  // queue) handle their own failure modes.
+  client.on("error", () => {});
+  return client;
 }
 
 export function isQueueEnabled(): boolean {
