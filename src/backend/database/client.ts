@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient } from "@neondatabase/serverless";
 
 declare global {
   var __pgPool: Pool | undefined;
@@ -7,11 +7,14 @@ declare global {
 function makePool() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
+  // Neon's serverless driver speaks WebSockets, which is what Vercel
+  // serverless functions actually allow (raw TCP to a DB host can hang for
+  // the full 300s function timeout). API-compatible with `pg.Pool`.
   return new Pool({
     connectionString: url,
-    ssl: { rejectUnauthorized: false },
-    max: 5,
-    idleTimeoutMillis: 30_000,
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
   });
 }
 
